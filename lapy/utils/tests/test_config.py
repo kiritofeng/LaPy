@@ -17,7 +17,7 @@ def test_sys_info():
     assert "RAM:" in value
     assert "SWAP:" in value
 
-    assert "numpy" in value
+    assert "cupy" in value
     assert "psutil" in value
 
     assert "style" not in value

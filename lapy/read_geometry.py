@@ -2,7 +2,7 @@
 import warnings
 from collections import OrderedDict
 
-import numpy as np
+import cupy
 
 """
 Read FreeSurfer geometry (fix for dev, ll 126-128);
@@ -53,7 +53,7 @@ def _fread3(fobj):
         A 3 byte int
     """
 
-    b1, b2, b3 = np.fromfile(fobj, ">u1", 3)
+    b1, b2, b3 = cupy.fromfile(fobj, ">u1", 3)
     return (b1 << 16) + (b2 << 8) + b3
 
 
@@ -67,15 +67,15 @@ def _read_volume_info(fobj):
 
     Returns
     -------
-    volume_info: np.ndarray
+    volume_info: cupy.ndarray
         Key-value pairs found in the file.
     """
 
     volume_info = OrderedDict()
-    head = np.fromfile(fobj, ">i4", 1)
-    if not np.array_equal(head, [20]):  # Read two bytes more
-        head = np.concatenate([head, np.fromfile(fobj, ">i4", 2)])
-        if not np.array_equal(head, [2, 0, 20]) and not np.array_equal(
+    head = cupy.fromfile(fobj, ">i4", 1)
+    if not cupy.array_equal(head, [20]):  # Read two bytes more
+        head = cupy.concatenate([head, cupy.fromfile(fobj, ">i4", 2)])
+        if not cupy.array_equal(head, [2, 0, 20]) and not cupy.array_equal(
             head, [2, 1, 20]
         ):
             warnings.warn("Unknown extension code.")
@@ -99,9 +99,9 @@ def _read_volume_info(fobj):
         if key in ("valid", "filename"):
             volume_info[key] = pair[1].strip()
         elif key == "volume":
-            volume_info[key] = np.array(pair[1].split()).astype(int)
+            volume_info[key] = cupy.array(pair[1].split()).astype(int)
         else:
-            volume_info[key] = np.array(pair[1].split()).astype(float)
+            volume_info[key] = cupy.array(pair[1].split()).astype(float)
     # Ignore the rest
     return volume_info
 
@@ -154,10 +154,10 @@ def read_geometry(filepath, read_metadata=False, read_stamp=False):
             test_dev = fobj.peek(1)[:1]
             if test_dev == b"\n":
                 fobj.readline()
-            vnum = np.fromfile(fobj, ">i4", 1)[0]
-            fnum = np.fromfile(fobj, ">i4", 1)[0]
-            coords = np.fromfile(fobj, ">f4", vnum * 3).reshape(vnum, 3)
-            faces = np.fromfile(fobj, ">i4", fnum * 3).reshape(fnum, 3)
+            vnum = cupy.fromfile(fobj, ">i4", 1)[0]
+            fnum = cupy.fromfile(fobj, ">i4", 1)[0]
+            coords = cupy.fromfile(fobj, ">f4", vnum * 3).reshape(vnum, 3)
+            faces = cupy.fromfile(fobj, ">i4", fnum * 3).reshape(fnum, 3)
 
             if read_metadata:
                 volume_info = _read_volume_info(fobj)

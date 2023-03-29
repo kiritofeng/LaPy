@@ -8,8 +8,8 @@ from .._imports import import_optional_dependency
 def test_import_optional_dependency():
     """Test the import of optional dependencies."""
     # Test import of present package
-    numpy = import_optional_dependency("numpy")
-    assert isinstance(numpy.__version__, str)
+    numpy = import_optional_dependency("cupy")
+    assert isinstance(cupy.__version__, str)
 
     # Test import of absent package
     with pytest.raises(ImportError, match="Missing optional dependency"):

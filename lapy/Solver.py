@@ -1,8 +1,8 @@
 import sys
 from typing import Optional, Tuple, Union
 
-import numpy as np
-from scipy import sparse
+import cupy
+from cupyx.scipy import sparse
 
 from .TetMesh import TetMesh
 from .TriaMesh import TriaMesh
@@ -59,7 +59,7 @@ class Solver:
                 print("TriaMesh with anisotropic Laplace-Beltrami")
                 u1, u2, c1, c2 = geometry.curvature_tria(smoothit=aniso_smooth)
                 # Diag mat to specify anisotropy strength
-                if isinstance(aniso, (list, tuple, set, np.ndarray)):
+                if isinstance(aniso, (list, tuple, set, cupy.ndarray)):
                     if len(aniso) != 2:
                         raise ValueError(
                             "aniso should be scalar or tuple/array of length 2!"
@@ -69,9 +69,9 @@ class Solver:
                 else:
                     aniso0 = aniso
                     aniso1 = aniso
-                aniso_mat = np.empty((geometry.t.shape[0], 2))
-                aniso_mat[:, 1] = np.exp(-aniso1 * np.abs(c1))
-                aniso_mat[:, 0] = np.exp(-aniso0 * np.abs(c2))
+                aniso_mat = cupy.empty((geometry.t.shape[0], 2))
+                aniso_mat[:, 1] = cupy.exp(-aniso1 * cupy.abs(c1))
+                aniso_mat[:, 0] = cupy.exp(-aniso0 * cupy.abs(c2))
                 a, b = self._fem_tria_aniso(geometry, u1, u2, aniso_mat, lump)
             else:
                 print("TriaMesh with regular Laplace-Beltrami")
@@ -128,27 +128,27 @@ class Solver:
         v3mv2 = v3 - v2
         v1mv3 = v1 - v3
         # Compute cross product and 4*vol for each triangle:
-        cr = np.cross(v3mv2, v1mv3)
-        vol = 2 * np.sqrt(np.sum(cr * cr, axis=1))
+        cr = cupy.cross(v3mv2, v1mv3)
+        vol = 2 * cupy.sqrt(cupy.sum(cr * cr, axis=1))
         # zero vol will cause division by zero below, so set to small value:
-        vol_mean = 0.0001 * np.mean(vol)
+        vol_mean = 0.0001 * cupy.mean(vol)
         vol[vol < sys.float_info.epsilon] = vol_mean
         # compute cotangents for A
         # using that v2mv1 = - (v3mv2 + v1mv3) this can also be seen by
         # summing the local matrix entries in the old algorithm
-        a12 = np.sum(v3mv2 * v1mv3, axis=1) / vol
-        a23 = np.sum(v1mv3 * v2mv1, axis=1) / vol
-        a31 = np.sum(v2mv1 * v3mv2, axis=1) / vol
+        a12 = cupy.sum(v3mv2 * v1mv3, axis=1) / vol
+        a23 = cupy.sum(v1mv3 * v2mv1, axis=1) / vol
+        a31 = cupy.sum(v2mv1 * v3mv2, axis=1) / vol
         # compute diagonals (from row sum = 0)
         a11 = -a12 - a31
         a22 = -a12 - a23
         a33 = -a31 - a23
         # stack columns to assemble data
-        local_a = np.column_stack(
+        local_a = cupy.column_stack(
             (a12, a12, a23, a23, a31, a31, a11, a22, a33)
         ).reshape(-1)
-        i = np.column_stack((t1, t2, t2, t3, t3, t1, t1, t2, t3)).reshape(-1)
-        j = np.column_stack((t2, t1, t3, t2, t1, t3, t1, t2, t3)).reshape(-1)
+        i = cupy.column_stack((t1, t2, t2, t3, t3, t1, t1, t2, t3)).reshape(-1)
+        j = cupy.column_stack((t2, t1, t3, t2, t1, t3, t1, t2, t3)).reshape(-1)
         # Construct sparse matrix:
         # a = sparse.csr_matrix((local_a, (i, j)))
         a = sparse.csc_matrix((local_a, (i, j)))
@@ -157,15 +157,15 @@ class Solver:
             # create b matrix data (account for that vol is 4 times area)
             b_ii = vol / 24
             b_ij = vol / 48
-            local_b = np.column_stack(
+            local_b = cupy.column_stack(
                 (b_ij, b_ij, b_ij, b_ij, b_ij, b_ij, b_ii, b_ii, b_ii)
             ).reshape(-1)
             b = sparse.csc_matrix((local_b, (i, j)))
         else:
             # when lumping put all onto diagonal  (area/3 for each vertex)
             b_ii = vol / 12
-            local_b = np.column_stack((b_ii, b_ii, b_ii)).reshape(-1)
-            i = np.column_stack((t1, t2, t3)).reshape(-1)
+            local_b = cupy.column_stack((b_ii, b_ii, b_ii)).reshape(-1)
+            i = cupy.column_stack((t1, t2, t3)).reshape(-1)
             b = sparse.csc_matrix((local_b, (i, i)))
         return a, b
 
@@ -221,55 +221,55 @@ class Solver:
         v1mv3 = v1 - v3
         # transform edge e to basis U = (U1,U2) via U^T * e
         # Ui is n x 3, e is n x 1, result is n x 2
-        uv2mv1 = np.column_stack(
-            (np.sum(u1 * v2mv1, axis=1), np.sum(u2 * v2mv1, axis=1))
+        uv2mv1 = cupy.column_stack(
+            (cupy.sum(u1 * v2mv1, axis=1), cupy.sum(u2 * v2mv1, axis=1))
         )
-        uv3mv2 = np.column_stack(
-            (np.sum(u1 * v3mv2, axis=1), np.sum(u2 * v3mv2, axis=1))
+        uv3mv2 = cupy.column_stack(
+            (cupy.sum(u1 * v3mv2, axis=1), cupy.sum(u2 * v3mv2, axis=1))
         )
-        uv1mv3 = np.column_stack(
-            (np.sum(u1 * v1mv3, axis=1), np.sum(u2 * v1mv3, axis=1))
+        uv1mv3 = cupy.column_stack(
+            (cupy.sum(u1 * v1mv3, axis=1), cupy.sum(u2 * v1mv3, axis=1))
         )
         # Compute cross product and 4*vol for each triangle:
-        cr = np.cross(v3mv2, v1mv3)
-        vol = 2 * np.sqrt(np.sum(cr * cr, axis=1))
+        cr = cupy.cross(v3mv2, v1mv3)
+        vol = 2 * cupy.sqrt(cupy.sum(cr * cr, axis=1))
         # zero vol will cause division by zero below, so set to small value:
-        vol_mean = 0.0001 * np.mean(vol)
+        vol_mean = 0.0001 * cupy.mean(vol)
         vol[vol < sys.float_info.epsilon] = vol_mean
         # compute cotangents for A
         # using that v2mv1 = - (v3mv2 + v1mv3) this can also be seen by
         # summing the local matrix entries in the old algorithm
         # Also: here aniso_mat is the two diagonal entries, not full matrices
-        a12 = np.sum(uv3mv2 * aniso_mat * uv1mv3, axis=1) / vol
-        a23 = np.sum(uv1mv3 * aniso_mat * uv2mv1, axis=1) / vol
-        a31 = np.sum(uv2mv1 * aniso_mat * uv3mv2, axis=1) / vol
+        a12 = cupy.sum(uv3mv2 * aniso_mat * uv1mv3, axis=1) / vol
+        a23 = cupy.sum(uv1mv3 * aniso_mat * uv2mv1, axis=1) / vol
+        a31 = cupy.sum(uv2mv1 * aniso_mat * uv3mv2, axis=1) / vol
         # compute diagonals (from row sum = 0)
         a11 = -a12 - a31
         a22 = -a12 - a23
         a33 = -a31 - a23
         # stack columns to assemble data
-        local_a = np.column_stack(
+        local_a = cupy.column_stack(
             (a12, a12, a23, a23, a31, a31, a11, a22, a33)
         ).reshape(-1)
-        i = np.column_stack((t1, t2, t2, t3, t3, t1, t1, t2, t3)).reshape(-1)
-        j = np.column_stack((t2, t1, t3, t2, t1, t3, t1, t2, t3)).reshape(-1)
+        i = cupy.column_stack((t1, t2, t2, t3, t3, t1, t1, t2, t3)).reshape(-1)
+        j = cupy.column_stack((t2, t1, t3, t2, t1, t3, t1, t2, t3)).reshape(-1)
         # Construct sparse matrix:
         # a = sparse.csr_matrix((local_a, (i, j)))
-        a = sparse.csc_matrix((local_a, (i, j)), dtype=np.float32)
+        a = sparse.csc_matrix((local_a, (i, j)), dtype=cupy.float32)
         if not lump:
             # create b matrix data (account for that vol is 4 times area)
             b_ii = vol / 24
             b_ij = vol / 48
-            local_b = np.column_stack(
+            local_b = cupy.column_stack(
                 (b_ij, b_ij, b_ij, b_ij, b_ij, b_ij, b_ii, b_ii, b_ii)
             ).reshape(-1)
-            b = sparse.csc_matrix((local_b, (i, j)), dtype=np.float32)
+            b = sparse.csc_matrix((local_b, (i, j)), dtype=cupy.float32)
         else:
             # when lumping put all onto diagonal  (area/3 for each vertex)
             b_ii = vol / 12
-            local_b = np.column_stack((b_ii, b_ii, b_ii)).reshape(-1)
-            i = np.column_stack((t1, t2, t3)).reshape(-1)
-            b = sparse.csc_matrix((local_b, (i, i)), dtype=np.float32)
+            local_b = cupy.column_stack((b_ii, b_ii, b_ii)).reshape(-1)
+            i = cupy.column_stack((t1, t2, t3)).reshape(-1)
+            b = sparse.csc_matrix((local_b, (i, i)), dtype=cupy.float32)
         return a, b
 
     @staticmethod
@@ -312,28 +312,28 @@ class Solver:
         v1mv3 = v1 - v3
 
         # Compute cross product and 4*vol for each triangle:
-        cr = np.cross(v3mv2, v1mv3)
-        vol = 0.5 * np.sqrt(np.sum(cr * cr, axis=1))
+        cr = cupy.cross(v3mv2, v1mv3)
+        vol = 0.5 * cupy.sqrt(cupy.sum(cr * cr, axis=1))
         # zero vol will cause division by zero below, so set to small value:
-        vol_mean = 0.001 * np.mean(vol)
+        vol_mean = 0.001 * cupy.mean(vol)
         vol[vol == 0] = vol_mean
         # create b matrix data
         if not lump:
             b_ii = vol / 6
             b_ij = vol / 12
-            local_b = np.column_stack(
+            local_b = cupy.column_stack(
                 (b_ij, b_ij, b_ij, b_ij, b_ij, b_ij, b_ii, b_ii, b_ii)
             ).reshape(-1)
             # stack edge and diag coords for matrix indices
-            i = np.column_stack((t1, t2, t2, t3, t3, t1, t1, t2, t3)).reshape(-1)
-            j = np.column_stack((t2, t1, t3, t2, t1, t3, t1, t2, t3)).reshape(-1)
+            i = cupy.column_stack((t1, t2, t2, t3, t3, t1, t1, t2, t3)).reshape(-1)
+            j = cupy.column_stack((t2, t1, t3, t2, t1, t3, t1, t2, t3)).reshape(-1)
             # Construct sparse matrix:
             b = sparse.csc_matrix((local_b, (i, j)))
         else:
             # when lumping put all onto diagonal
             b_ii = vol / 3
-            local_b = np.column_stack((b_ii, b_ii, b_ii)).reshape(-1)
-            i = np.column_stack((t1, t2, t3)).reshape(-1)
+            local_b = cupy.column_stack((b_ii, b_ii, b_ii)).reshape(-1)
+            i = cupy.column_stack((t1, t2, t3)).reshape(-1)
             b = sparse.csc_matrix((local_b, (i, i)))
         return b
 
@@ -382,27 +382,27 @@ class Solver:
         e5 = v4 - v2
         e6 = v4 - v3
         # Compute cross product and 6 * vol for each triangle:
-        cr = np.cross(e1, e3)
-        vol = np.abs(np.sum(e4 * cr, axis=1))
+        cr = cupy.cross(e1, e3)
+        vol = cupy.abs(cupy.sum(e4 * cr, axis=1))
         # zero vol will cause division by zero below, so set to small value:
-        vol_mean = 0.0001 * np.mean(vol)
+        vol_mean = 0.0001 * cupy.mean(vol)
         vol[vol == 0] = vol_mean
         # compute dot products of edge vectors
-        e11 = np.sum(e1 * e1, axis=1)
-        e22 = np.sum(e2 * e2, axis=1)
-        e33 = np.sum(e3 * e3, axis=1)
-        e44 = np.sum(e4 * e4, axis=1)
-        e55 = np.sum(e5 * e5, axis=1)
-        e66 = np.sum(e6 * e6, axis=1)
-        e12 = np.sum(e1 * e2, axis=1)
-        e13 = np.sum(e1 * e3, axis=1)
-        e14 = np.sum(e1 * e4, axis=1)
-        e15 = np.sum(e1 * e5, axis=1)
-        e23 = np.sum(e2 * e3, axis=1)
-        e25 = np.sum(e2 * e5, axis=1)
-        e26 = np.sum(e2 * e6, axis=1)
-        e34 = np.sum(e3 * e4, axis=1)
-        e36 = np.sum(e3 * e6, axis=1)
+        e11 = cupy.sum(e1 * e1, axis=1)
+        e22 = cupy.sum(e2 * e2, axis=1)
+        e33 = cupy.sum(e3 * e3, axis=1)
+        e44 = cupy.sum(e4 * e4, axis=1)
+        e55 = cupy.sum(e5 * e5, axis=1)
+        e66 = cupy.sum(e6 * e6, axis=1)
+        e12 = cupy.sum(e1 * e2, axis=1)
+        e13 = cupy.sum(e1 * e3, axis=1)
+        e14 = cupy.sum(e1 * e4, axis=1)
+        e15 = cupy.sum(e1 * e5, axis=1)
+        e23 = cupy.sum(e2 * e3, axis=1)
+        e25 = cupy.sum(e2 * e5, axis=1)
+        e26 = cupy.sum(e2 * e6, axis=1)
+        e34 = cupy.sum(e3 * e4, axis=1)
+        e36 = cupy.sum(e3 * e6, axis=1)
         # compute entries for A (negations occur when one edge direction is flipped)
         # these can be computed multiple ways
         # basically for ij, take opposing edge (call it Ek) and two edges from the
@@ -421,7 +421,7 @@ class Solver:
         a33 = -a13 - a23 - a34
         a44 = -a14 - a24 - a34
         # stack columns to assemble data
-        local_a = np.column_stack(
+        local_a = cupy.column_stack(
             (
                 a12,
                 a12,
@@ -441,10 +441,10 @@ class Solver:
                 a44,
             )
         ).reshape(-1)
-        i = np.column_stack(
+        i = cupy.column_stack(
             (t1, t2, t2, t3, t3, t1, t1, t4, t2, t4, t3, t4, t1, t2, t3, t4)
         ).reshape(-1)
-        j = np.column_stack(
+        j = cupy.column_stack(
             (t2, t1, t3, t2, t1, t3, t4, t1, t4, t2, t4, t3, t1, t2, t3, t4)
         ).reshape(-1)
         local_a = local_a / 6.0
@@ -455,7 +455,7 @@ class Solver:
             # create b matrix data (account for that vol is 6 times tet volume)
             bii = vol / 60.0
             bij = vol / 120.0
-            local_b = np.column_stack(
+            local_b = cupy.column_stack(
                 (
                     bij,
                     bij,
@@ -479,8 +479,8 @@ class Solver:
         else:
             # when lumping put all onto diagonal (volume/4 for each vertex)
             bii = vol / 24.0
-            local_b = np.column_stack((bii, bii, bii, bii)).reshape(-1)
-            i = np.column_stack((t1, t2, t3, t4)).reshape(-1)
+            local_b = cupy.column_stack((bii, bii, bii, bii)).reshape(-1)
+            i = cupy.column_stack((t1, t2, t3, t4)).reshape(-1)
             b = sparse.csc_matrix((local_b, (i, i)))
         return a, b
 
@@ -524,7 +524,7 @@ class Solver:
         tnum = vox.t.shape[0]
         # Linear local matrices on unit voxel
         tb = (
-            np.array(
+            cupy.array(
                 [
                     [8.0, 4.0, 2.0, 4.0, 4.0, 2.0, 1.0, 2.0],
                     [4.0, 8.0, 4.0, 2.0, 2.0, 4.0, 2.0, 1.0],
@@ -541,7 +541,7 @@ class Solver:
         x = 1.0 / 9.0
         y = 1.0 / 18.0
         z = 1.0 / 36.0
-        ta00 = np.array(
+        ta00 = cupy.array(
             [
                 [x, -x, -y, y, y, -y, -z, z],
                 [-x, x, y, -y, -y, y, z, -z],
@@ -553,7 +553,7 @@ class Solver:
                 [z, -z, -y, y, y, -y, -x, x],
             ]
         )
-        ta11 = np.array(
+        ta11 = cupy.array(
             [
                 [x, y, -y, -x, y, z, -z, -y],
                 [y, x, -x, -y, z, y, -y, -z],
@@ -565,7 +565,7 @@ class Solver:
                 [-y, -z, z, y, -x, -y, y, x],
             ]
         )
-        ta22 = np.array(
+        ta22 = cupy.array(
             [
                 [x, y, z, y, -x, -y, -z, -y],
                 [y, x, y, z, -y, -x, -y, -z],
@@ -585,23 +585,23 @@ class Solver:
         v1mv0 = v1 - v0
         v2mv0 = v2 - v0
         v3mv0 = v3 - v0
-        g11 = np.sum(v1mv0 * v1mv0)
-        g22 = np.sum(v2mv0 * v2mv0)
-        g33 = np.sum(v3mv0 * v3mv0)
-        vol = np.sqrt(g11 * g22 * g33)
+        g11 = cupy.sum(v1mv0 * v1mv0)
+        g22 = cupy.sum(v2mv0 * v2mv0)
+        g33 = cupy.sum(v3mv0 * v3mv0)
+        vol = cupy.sqrt(g11 * g22 * g33)
         a0 = 1.0 / g11
         a1 = 1.0 / g22
         a2 = 1.0 / g33
         if lump:
-            local_b = (vol / 8.0) * np.ones([8, 8])
+            local_b = (vol / 8.0) * cupy.ones([8, 8])
         else:
             local_b = tb * vol
         local_a = vol * (a0 * ta00 + a1 * ta11 + a2 * ta22)
-        local_b = np.repeat(local_b[np.newaxis, :, :], tnum, axis=0).reshape(-1)
-        local_a = np.repeat(local_a[np.newaxis, :, :], tnum, axis=0).reshape(-1)
+        local_b = cupy.repeat(local_b[cupy.newaxis, :, :], tnum, axis=0).reshape(-1)
+        local_a = cupy.repeat(local_a[cupy.newaxis, :, :], tnum, axis=0).reshape(-1)
         # Construct row and col indices.
-        i = np.array([np.tile(x, (8, 1)) for x in vox.t]).reshape(-1)
-        j = np.array([np.transpose(np.tile(x, (8, 1))) for x in vox.t]).reshape(-1)
+        i = cupy.array([cupy.tile(x, (8, 1)) for x in vox.t]).reshape(-1)
+        j = cupy.array([cupy.transpose(cupy.tile(x, (8, 1))) for x in vox.t]).reshape(-1)
         # Construct sparse matrix:
         a = sparse.csc_matrix((local_a, (i, j)))
         b = sparse.csc_matrix((local_b, (i, j)))
@@ -625,7 +625,7 @@ class Solver:
             Array representing the k eigenvectors. The column ``eigenvectors[:, i]`` is
             the eigenvector corresponding to ``eigenvalues[i]``.
         """
-        from scipy.sparse.linalg import LinearOperator
+        from cupyx.scipy.sparse.linalg import LinearOperator
 
         sigma = -0.01
         if self.sksparse is not None:
@@ -637,7 +637,7 @@ class Solver:
                 dtype=self.stiffness.dtype,
             )
         else:
-            from scipy.sparse.linalg import eigsh, splu
+            from cupyx.scipy.sparse.linalg import eigsh, splu
 
             print("Solver: spsolve (LU decomposition) ...")
             # turns out it is much faster to use cholesky and pass operator
@@ -692,9 +692,9 @@ class Solver:
                 "columns."
             )
         # create vector h
-        if np.isscalar(h):
-            h = np.full((dim, 1), h, dtype="float64")
-        elif (not np.isscalar(h)) and h.size != dim:
+        if cupy.isscalar(h):
+            h = cupy.full((dim, 1), h, dtype="float64")
+        elif (not cupy.isscalar(h)) and h.size != dim:
             raise ValueError(
                 "h should be either scalar or column vector with row num of A"
             )
@@ -707,14 +707,14 @@ class Solver:
                 raise ValueError("dtup should contain index and data arrays")
             didx = dtup[0]
             ddat = dtup[1]
-            if np.unique(didx).size != len(didx):
+            if cupy.unique(didx).size != len(didx):
                 raise ValueError("dtup indices need to be unique")
             if not (len(didx) > 0 and len(didx) == len(ddat)):
                 raise ValueError(
                     "dtup should contain index and data arrays (same lengths > 0)"
                 )
             dvec = sparse.csc_matrix(
-                (ddat, (didx, np.zeros(len(didx), dtype=np.uint32))), (dim, 1)
+                (ddat, (didx, cupy.zeros(len(didx), dtype=cupy.uint32))), (dim, 1)
             )
 
         # create vector n
@@ -729,7 +729,7 @@ class Solver:
                     "dtup should contain index and data arrays (same lengths > 0)"
                 )
             nvec = sparse.csc_matrix(
-                (ndat, (nidx, np.zeros(len(nidx), dtype=np.uint32))), (dim, 1)
+                (ndat, (nidx, cupy.zeros(len(nidx), dtype=cupy.uint32))), (dim, 1)
             )
         # compute right hand side
         b = self.mass * (h - nvec)
@@ -738,7 +738,7 @@ class Solver:
         # remove Dirichlet Nodes
         mask = []
         if len(didx) > 0:
-            mask = np.full(dim, True, dtype=bool)
+            mask = cupy.full(dim, True, dtype=bool)
             mask[didx] = False
             b = b[mask]
             # we need to keep A sparse and do col and row slicing
@@ -761,15 +761,15 @@ class Solver:
             chol = self.sparse.cholesky(a)
             x = chol(b)
         else:
-            from scipy.sparse.linalg import splu
+            from cupyx.scipy.sparse.linalg import splu
 
             print("Solver: spsolve (LU decomposition) ...")
             lu = splu(a)
-            x = lu.solve(b.astype(np.float32))
-        x = np.squeeze(np.array(x))
+            x = lu.solve(b.astype(cupy.float32))
+        x = cupy.squeeze(cupy.array(x))
         # pad Dirichlet nodes
         if len(didx) > 0:
-            xfull = np.zeros(dim)
+            xfull = cupy.zeros(dim)
             xfull[mask] = x
             xfull[didx] = ddat
             return xfull

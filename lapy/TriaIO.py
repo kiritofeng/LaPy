@@ -2,7 +2,7 @@
 # -*- coding: latin-1 -*-
 
 
-import numpy as np
+import cupy
 
 from .TriaMesh import TriaMesh
 
@@ -76,16 +76,16 @@ def import_off(infile):
     tnum = int(larr[1])
     # print(" tnum: {} pnum: {}".format(tnum,pnum))
     # read points as chunch
-    v = np.fromfile(f, "float32", 3 * pnum, " ")
+    v = cupy.fromfile(f, "float32", 3 * pnum, " ")
     v.shape = (pnum, 3)
     # read trias as chunch
-    t = np.fromfile(f, "int", 4 * tnum, " ")
+    t = cupy.fromfile(f, "int", 4 * tnum, " ")
     t.shape = (tnum, 4)
     # print(" t0: {} ".format(t[0, :]))
     # make sure first column is equal to 3 (trias)
-    # max0 = np.amax(t[:, 0])
+    # max0 = cupy.amax(t[:, 0])
     # print(" max: {}".format(max0))
-    if np.amax(t[:, 0]) != 3:
+    if cupy.amax(t[:, 0]) != 3:
         print("[no triangle data] --> FAILED\n")
         f.close()
         return
@@ -155,7 +155,7 @@ def import_vtk(infile):
         return
     pnum = int(larr[1])
     # read points as chunk
-    v = np.fromfile(f, "float32", 3 * pnum, " ")
+    v = cupy.fromfile(f, "float32", 3 * pnum, " ")
     v.shape = (pnum, 3)
     # expect polygon or tria_strip line
     line = f.readline()
@@ -171,12 +171,12 @@ def import_vtk(infile):
                 + " data per tria, expected trias 3+1] --> FAILED\n"
             )
             return
-        t = np.fromfile(f, "int", ttnum, " ")
+        t = cupy.fromfile(f, "int", ttnum, " ")
         t.shape = (tnum, 4)
         if t[tnum - 1][0] != 3:
             print("[can only read triangles] --> FAILED\n")
             return
-        t = np.delete(t, 0, 1)
+        t = cupy.delete(t, 0, 1)
     elif larr[0] == "TRIANGLE_STRIPS":
         tnum = int(larr[1])
         # ttnum = int(larr[2])
@@ -198,7 +198,7 @@ def import_vtk(infile):
                 else:
                     tria = [larr[ii], larr[ii - 1], larr[ii + 1]]
                 tt.append(tria)
-        t = np.array(tt)
+        t = cupy.array(tt)
     else:
         print("[read: " + line + " expected POLYGONS or TRIANGLE_STRIPS] --> FAILED\n")
         return
@@ -218,7 +218,7 @@ def import_gmsh(infile):
 
     Returns
     -------
-    points : np.ndarray
+    points : cupy.ndarray
         List of points
     cells : array_like
         List of cells
@@ -239,8 +239,6 @@ def import_gmsh(infile):
 
     import logging
     import struct
-
-    import numpy
 
     num_nodes_per_cell = {
         "vertex": 1,
@@ -348,7 +346,7 @@ def import_gmsh(infile):
             line = f.readline()
             num_nodes = int(line)
             if is_ascii:
-                points = numpy.fromfile(f, count=num_nodes * 4, sep=" ").reshape(
+                points = cupy.fromfile(f, count=num_nodes * 4, sep=" ").reshape(
                     (num_nodes, 4)
                 )
                 # The first number is the index
@@ -356,13 +354,13 @@ def import_gmsh(infile):
             else:
                 # binary
                 num_bytes = num_nodes * (int_size + 3 * data_size)
-                assert numpy.int32(0).nbytes == int_size
-                assert numpy.float64(0.0).nbytes == data_size
-                dtype = [("index", numpy.int32), ("x", numpy.float64, (3,))]
-                data = numpy.fromstring(f.read(num_bytes), dtype=dtype)
+                assert cupy.int32(0).nbytes == int_size
+                assert cupy.float64(0.0).nbytes == data_size
+                dtype = [("index", cupy.int32), ("x", cupy.float64, (3,))]
+                data = cupy.fromstring(f.read(num_bytes), dtype=dtype)
                 assert (data["index"] == range(1, num_nodes + 1)).all()
-                # vtk numpy support requires contiguous data
-                points = numpy.ascontiguousarray(data["x"])
+                # vtk cupy support requires contiguous data
+                points = cupy.ascontiguousarray(data["x"])
                 line = f.readline()
                 assert line == "\n"
 
@@ -403,11 +401,11 @@ def import_gmsh(infile):
                         cell_data[t] = []
                     cell_data[t].append(data[3 : 3 + num_tags])
 
-                # convert to numpy arrays
+                # convert to cupy arrays
                 for key in cells:
-                    cells[key] = numpy.array(cells[key], dtype=int)
+                    cells[key] = cupy.array(cells[key], dtype=int)
                 for key in cell_data:
-                    cell_data[key] = numpy.array(cell_data[key], dtype=int)
+                    cell_data[key] = cupy.array(cell_data[key], dtype=int)
             else:
                 # binary
                 num_elems = 0
@@ -424,7 +422,7 @@ def import_gmsh(infile):
                     num_bytes = 4 * (num_elems0 * (1 + num_tags + num_nodes_per_elem))
                     shape = (num_elems0, 1 + num_tags + num_nodes_per_elem)
                     b = f.read(num_bytes)
-                    data = numpy.fromstring(b, dtype=numpy.int32).reshape(shape)
+                    data = cupy.fromstring(b, dtype=cupy.int32).reshape(shape)
 
                     if t not in cells:
                         cells[t] = []
@@ -438,11 +436,11 @@ def import_gmsh(infile):
 
                 # collect cells
                 for key in cells:
-                    cells[key] = numpy.vstack(cells[key])
+                    cells[key] = cupy.vstack(cells[key])
 
                 # collect cell data
                 for key in cell_data:
-                    cell_data[key] = numpy.vstack(cell_data[key])
+                    cell_data[key] = cupy.vstack(cell_data[key])
 
                 line = f.readline()
                 assert line == "\n"
@@ -499,19 +497,19 @@ def export_vtk(tria, outfile):
     f.write("vtk output\n")
     f.write("ASCII\n")
     f.write("DATASET POLYDATA\n")
-    f.write("POINTS " + str(np.shape(tria.v)[0]) + " float\n")
-    for i in range(np.shape(tria.v)[0]):
+    f.write("POINTS " + str(cupy.shape(tria.v)[0]) + " float\n")
+    for i in range(cupy.shape(tria.v)[0]):
         f.write(" ".join(map(str, tria.v[i, :])))
         f.write("\n")
     f.write(
         "POLYGONS "
-        + str(np.shape(tria.t)[0])
+        + str(cupy.shape(tria.t)[0])
         + " "
-        + str(4 * np.shape(tria.t)[0])
+        + str(4 * cupy.shape(tria.t)[0])
         + "\n"
     )
-    for i in range(np.shape(tria.t)[0]):
-        f.write(" ".join(map(str, np.append(3, tria.t[i, :]))))
+    for i in range(cupy.shape(tria.t)[0]):
+        f.write(" ".join(map(str, cupy.append(3, tria.t[i, :]))))
         f.write("\n")
     f.close()
 

@@ -4,10 +4,9 @@
 # Original Author: Martin Reuter
 # Date: Jul-5-2018
 #
-
 import os.path
 
-import numpy as np
+import cupy
 
 from .TetMesh import TetMesh
 
@@ -75,9 +74,9 @@ def import_gmsh(infile):
     pnum = int(f.readline())
     # read (nodes X 4) matrix as chunk
     # drop first column
-    v = np.fromfile(f, "float32", 4 * pnum, " ")
+    v = cupy.fromfile(f, "float32", 4 * pnum, " ")
     v.shape = (pnum, 4)
-    v = np.delete(v, 0, 1)
+    v = cupy.delete(v, 0, 1)
     line = f.readline()
     if not line.startswith("$EndNodes"):
         print("[$EndNodes keyword not found] --> FAILED\n")
@@ -99,9 +98,9 @@ def import_gmsh(infile):
         f.close()
         return
     # read (nodes X ?) matrix
-    t = np.fromfile(f, "int", tnum * len(larr), " ")
+    t = cupy.fromfile(f, "int", tnum * len(larr), " ")
     t.shape = (tnum, len(larr))
-    t = np.delete(t, np.s_[0 : len(larr) - 4], 1)
+    t = cupy.delete(t, cupy.s_[0 : len(larr) - 4], 1)
     line = f.readline()
     if not line.startswith("$EndElements"):
         print("Line: ", line, " \n")
@@ -172,7 +171,7 @@ def import_vtk(infile):
         return
     pnum = int(larr[1])
     # read points as chunk
-    v = np.fromfile(f, "float32", 3 * pnum, " ")
+    v = cupy.fromfile(f, "float32", 3 * pnum, " ")
     v.shape = (pnum, 3)
     # expect polygon or tria_strip line
     line = f.readline()
@@ -186,12 +185,12 @@ def import_vtk(infile):
                 "[having: " + str(npt) + " data per tetra, expected 4+1] --> FAILED\n"
             )
             return
-        t = np.fromfile(f, "int", ttnum, " ")
+        t = cupy.fromfile(f, "int", ttnum, " ")
         t.shape = (tnum, 5)
         if t[tnum - 1][0] != 4:
             print("[can only read tetras] --> FAILED\n")
             return
-        t = np.delete(t, 0, 1)
+        t = cupy.delete(t, 0, 1)
     else:
         print("[read: " + line + " expected POLYGONS or CELLS] --> FAILED\n")
         return
@@ -225,14 +224,14 @@ def export_vtk(tet, outfile):
     f.write("vtk output\n")
     f.write("ASCII\n")
     f.write("DATASET POLYDATA\n")
-    f.write("POINTS " + str(np.shape(tet.v)[0]) + " float\n")
-    for i in range(np.shape(tet.v)[0]):
+    f.write("POINTS " + str(cupy.shape(tet.v)[0]) + " float\n")
+    for i in range(cupy.shape(tet.v)[0]):
         f.write(" ".join(map(str, tet.v[i, :])))
         f.write("\n")
     f.write(
-        "POLYGONS " + str(np.shape(tet.t)[0]) + " " + str(5 * np.shape(tet.t)[0]) + "\n"
+        "POLYGONS " + str(cupy.shape(tet.t)[0]) + " " + str(5 * cupy.shape(tet.t)[0]) + "\n"
     )
-    for i in range(np.shape(tet.t)[0]):
-        f.write(" ".join(map(str, np.append(4, tet.t[i, :]))))
+    for i in range(cupy.shape(tet.t)[0]):
+        f.write(" ".join(map(str, cupy.append(4, tet.t[i, :]))))
         f.write("\n")
     f.close()

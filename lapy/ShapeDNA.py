@@ -1,5 +1,5 @@
-import numpy as np
-import scipy.spatial.distance as di
+import cupy
+import cupyx.scipy.spatial.distance as di
 
 from .Solver import Solver
 from .TetMesh import TetMesh  # noqa: F401
@@ -85,7 +85,7 @@ def normalize_ev(geom, evals, method="geometry"):
     if method == "surface":
         vol = geom.area()
 
-        return evals * vol ** np.divide(2.0, 2.0)
+        return evals * vol ** cupy.divide(2.0, 2.0)
 
     elif method == "volume":
         if type(geom).__name__ == "TriaMesh":
@@ -100,13 +100,13 @@ def normalize_ev(geom, evals, method="geometry"):
 
             vol = bnd.volume()
 
-        return evals * vol ** np.divide(2.0, 3.0)
+        return evals * vol ** cupy.divide(2.0, 3.0)
 
     elif method == "geometry":
         if type(geom).__name__ == "TriaMesh":
             vol = geom.area()
 
-            return evals * vol ** np.divide(2.0, 2.0)
+            return evals * vol ** cupy.divide(2.0, 2.0)
 
         elif type(geom).__name__ == "TetMesh":
             bnd = geom.boundary_tria()
@@ -115,7 +115,7 @@ def normalize_ev(geom, evals, method="geometry"):
 
             vol = bnd.volume()
 
-            return evals * vol ** np.divide(2.0, 3.0)
+            return evals * vol ** cupy.divide(2.0, 3.0)
 
 
 # function for linear reweighting
@@ -136,8 +136,8 @@ def reweight_ev(evals):
         vector of reweighted eigenvalues
     """
 
-    # evals[1:] = evals[1:] / np.arange(1, len(evals))
-    evals = evals / np.arange(1, len(evals) + 1)
+    # evals[1:] = evals[1:] / cupy.arange(1, len(evals))
+    evals = evals / cupy.arange(1, len(evals) + 1)
 
     return evals
 

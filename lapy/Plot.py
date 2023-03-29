@@ -9,11 +9,10 @@ In jupyter notebook do this:
 import re
 from bisect import bisect
 
-import numpy as np
+import cupy
 import plotly
 import plotly.graph_objs as go
 
-# import matplotlib.cm as cm
 from .TetMesh import TetMesh
 
 
@@ -168,10 +167,10 @@ def _get_colorval(t, colormap):
         raise ValueError("t not in range?")
     tt = (t - columns[0][pos - 1]) / (columns[0][pos] - columns[0][pos - 1])
     # get color before and after as array of 3 ints
-    rv1 = np.array(list(map(int, re.findall("[0-9]+", columns[1][pos - 1]))))
-    rv2 = np.array(list(map(int, re.findall("[0-9]+", columns[1][pos]))))
+    rv1 = cupy.array(list(map(int, re.findall("[0-9]+", columns[1][pos - 1]))))
+    rv2 = cupy.array(list(map(int, re.findall("[0-9]+", columns[1][pos]))))
     # compute new color via linear interpolation
-    cval = np.rint(rv1 + tt * (rv2 - rv1)).astype(int)
+    cval = cupy.rint(rv1 + tt * (rv2 - rv1)).astype(int)
     # format as string again
     cstr = "rgb(%d, %d, %d)" % (cval[0], cval[1], cval[2])
     return cstr
@@ -185,7 +184,7 @@ def _map_z2color(zval, colormap, zmin, zmax):
     ----------
     zval : float
         value to be mapped
-    colormap : matplotlib.colors.LinearSegmentedColormap or np.ndarray
+    colormap : matplotlib.colors.LinearSegmentedColormap or cupy.ndarray
         list of values and color code strings
     zmin : float
         minimum
@@ -324,10 +323,10 @@ def plot_tet_mesh(
         )
 
         # apply criteria to find matching vertices
-        sel = np.where(eval(criteria))
+        sel = cupy.where(eval(criteria))
 
         # find matching tetras
-        tidx = np.where(np.sum(np.isin(tetra.t, sel), axis=1) == 4)[0]
+        tidx = cupy.where(cupy.sum(cupy.isin(tetra.t, sel), axis=1) == 4)[0]
         tsel = tetra.t[tidx, :]
         tfunc_sel = None
         if tfunc is not None:
@@ -491,15 +490,15 @@ def plot_tria_mesh(
                 vertexcolor=vcolor,
                 facecolor=tcolor,
             )
-        elif tfunc.ndim == 1 or (tfunc.ndim == 2 and np.min(tfunc.shape) == 1):
+        elif tfunc.ndim == 1 or (tfunc.ndim == 2 and cupy.min(tfunc.shape) == 1):
             # scalar tfunc
-            min_fcol = np.min(tfunc)
-            max_fcol = np.max(tfunc)
+            min_fcol = cupy.min(tfunc)
+            max_fcol = cupy.max(tfunc)
             # special treatment for constant functions
-            if np.abs(min_fcol - max_fcol) < 0.0001:
-                if np.abs(max_fcol) > 0.0001:
-                    min_fcol = -np.abs(min_fcol)
-                    max_fcol = np.abs(max_fcol)
+            if cupy.abs(min_fcol - max_fcol) < 0.0001:
+                if cupy.abs(max_fcol) > 0.0001:
+                    min_fcol = -cupy.abs(min_fcol)
+                    max_fcol = cupy.abs(max_fcol)
                 else:  # both are zero
                     min_fcol = -1
                     max_fcol = 1
@@ -520,7 +519,7 @@ def plot_tria_mesh(
                 facecolor=facecolor,
                 flatshading=True,
             )
-        elif tfunc.ndim == 2 and np.min(tfunc.shape) == 3:
+        elif tfunc.ndim == 2 and cupy.min(tfunc.shape) == 3:
             # vector tfunc
             s = 0.7 * tria.avg_edge_length()
             centroids = (1.0 / 3.0) * (
@@ -528,25 +527,25 @@ def plot_tria_mesh(
                 + tria.v[tria.t[:, 1], :]
                 + tria.v[tria.t[:, 2], :]
             )
-            xv = np.column_stack(
+            xv = cupy.column_stack(
                 (
                     centroids[:, 0],
                     centroids[:, 0] + s * tfunc[:, 0],
-                    np.full(tria.t.shape[0], np.nan),
+                    cupy.full(tria.t.shape[0], cupy.nan),
                 )
             ).reshape(-1)
-            yv = np.column_stack(
+            yv = cupy.column_stack(
                 (
                     centroids[:, 1],
                     centroids[:, 1] + s * tfunc[:, 1],
-                    np.full(tria.t.shape[0], np.nan),
+                    cupy.full(tria.t.shape[0], cupy.nan),
                 )
             ).reshape(-1)
-            zv = np.column_stack(
+            zv = cupy.column_stack(
                 (
                     centroids[:, 2],
                     centroids[:, 2] + s * tfunc[:, 2],
-                    np.full(tria.t.shape[0], np.nan),
+                    cupy.full(tria.t.shape[0], cupy.nan),
                 )
             ).reshape(-1)
             vlines = go.Scatter3d(
@@ -562,7 +561,7 @@ def plot_tria_mesh(
                 "tfunc should be scalar (face color) or 3d for each triangle"
             )
 
-    elif vfunc.ndim == 1 or (vfunc.ndim == 2 and np.min(vfunc.shape) == 1):
+    elif vfunc.ndim == 1 or (vfunc.ndim == 2 and cupy.min(vfunc.shape) == 1):
         # scalar vfunc
         if plot_levels:
             colorscale = _get_color_levels()
@@ -580,28 +579,28 @@ def plot_tria_mesh(
             colorscale=colorscale,
             flatshading=flatshading,
         )
-    elif vfunc.ndim == 2 and np.min(vfunc.shape) == 3:
+    elif vfunc.ndim == 2 and cupy.min(vfunc.shape) == 3:
         # vector vfunc
         s = 0.7 * tria.avg_edge_length()
-        xv = np.column_stack(
+        xv = cupy.column_stack(
             (
                 tria.v[:, 0],
                 tria.v[:, 0] + s * vfunc[:, 0],
-                np.full(tria.v.shape[0], np.nan),
+                cupy.full(tria.v.shape[0], cupy.nan),
             )
         ).reshape(-1)
-        yv = np.column_stack(
+        yv = cupy.column_stack(
             (
                 tria.v[:, 1],
                 tria.v[:, 1] + s * vfunc[:, 1],
-                np.full(tria.v.shape[0], np.nan),
+                cupy.full(tria.v.shape[0], cupy.nan),
             )
         ).reshape(-1)
-        zv = np.column_stack(
+        zv = cupy.column_stack(
             (
                 tria.v[:, 2],
                 tria.v[:, 2] + s * vfunc[:, 2],
-                np.full(tria.v.shape[0], np.nan),
+                cupy.full(tria.v.shape[0], cupy.nan),
             )
         ).reshape(-1)
         vlines = go.Scatter3d(
@@ -614,31 +613,31 @@ def plot_tria_mesh(
     if plot_edges:
         # 4 points = three edges for each tria, nan to separate triangles
         # this plots every edge twice (except boundary edges)
-        xe = np.column_stack(
+        xe = cupy.column_stack(
             (
                 tria.v[tria.t[:, 0], 0],
                 tria.v[tria.t[:, 1], 0],
                 tria.v[tria.t[:, 2], 0],
                 tria.v[tria.t[:, 0], 0],
-                np.full(tria.t.shape[0], np.nan),
+                cupy.full(tria.t.shape[0], cupy.nan),
             )
         ).reshape(-1)
-        ye = np.column_stack(
+        ye = cupy.column_stack(
             (
                 tria.v[tria.t[:, 0], 1],
                 tria.v[tria.t[:, 1], 1],
                 tria.v[tria.t[:, 2], 1],
                 tria.v[tria.t[:, 0], 1],
-                np.full(tria.t.shape[0], np.nan),
+                cupy.full(tria.t.shape[0], cupy.nan),
             )
         ).reshape(-1)
-        ze = np.column_stack(
+        ze = cupy.column_stack(
             (
                 tria.v[tria.t[:, 0], 2],
                 tria.v[tria.t[:, 1], 2],
                 tria.v[tria.t[:, 2], 2],
                 tria.v[tria.t[:, 0], 2],
-                np.full(tria.t.shape[0], np.nan),
+                cupy.full(tria.t.shape[0], cupy.nan),
             )
         ).reshape(-1)
 

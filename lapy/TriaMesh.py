@@ -1,5 +1,5 @@
-import numpy as np
-from scipy import sparse
+import cupy
+from cupyx.scipy import sparse
 
 """
 
@@ -121,16 +121,16 @@ class TriaMesh:
             Vertices should have 3 coordinates
         """
 
-        self.v = np.array(v)
-        self.t = np.array(t)
+        self.v = cupy.array(v)
+        self.t = cupy.array(t)
         # transpose if necessary
         if self.v.shape[0] < self.v.shape[1]:
             self.v = self.v.T
         if self.t.shape[0] < self.t.shape[1]:
             self.t = self.t.T
         # Check a few things
-        vnum = np.max(self.v.shape)
-        if np.max(self.t) >= vnum:
+        vnum = cupy.max(self.v.shape)
+        if cupy.max(self.t) >= vnum:
             raise ValueError("Max index exceeds number of vertices")
         if self.t.shape[1] != 3:
             raise ValueError("Triangles should have 3 vertices")
@@ -156,15 +156,15 @@ class TriaMesh:
             Inner edges usually 2, boundary edges 1. Higher
             numbers can occur when there are non-manifold triangles.
             The sparse matrix can be binarized via:
-            adj.data = np.ones(adj.data.shape)
+            adj.data = cupy.ones(adj.data.shape)
         """
 
         t0 = self.t[:, 0]
         t1 = self.t[:, 1]
         t2 = self.t[:, 2]
-        i = np.column_stack((t0, t1, t1, t2, t2, t0)).reshape(-1)
-        j = np.column_stack((t1, t0, t2, t1, t0, t2)).reshape(-1)
-        dat = np.ones(i.shape)
+        i = cupy.column_stack((t0, t1, t1, t2, t2, t0)).reshape(-1)
+        j = cupy.column_stack((t1, t0, t2, t1, t0, t2)).reshape(-1)
+        dat = cupy.ones(i.shape)
         n = self.v.shape[0]
         return sparse.csc_matrix((dat, (i, j)), shape=(n, n))
 
@@ -189,9 +189,9 @@ class TriaMesh:
         t0 = self.t[:, 0]
         t1 = self.t[:, 1]
         t2 = self.t[:, 2]
-        i = np.column_stack((t0, t1, t2)).reshape(-1)
-        j = np.column_stack((t1, t2, t0)).reshape(-1)
-        dat = np.ones(i.shape)
+        i = cupy.column_stack((t0, t1, t2)).reshape(-1)
+        j = cupy.column_stack((t1, t2, t0)).reshape(-1)
+        dat = cupy.ones(i.shape)
         n = self.v.shape[0]
         return sparse.csc_matrix((dat, (i, j)), shape=(n, n))
 
@@ -221,10 +221,10 @@ class TriaMesh:
         t0 = self.t[:, 0]
         t1 = self.t[:, 1]
         t2 = self.t[:, 2]
-        i = np.column_stack((t0, t1, t2)).reshape(-1)
-        j = np.column_stack((t1, t2, t0)).reshape(-1)
+        i = cupy.column_stack((t0, t1, t2)).reshape(-1)
+        j = cupy.column_stack((t1, t2, t0)).reshape(-1)
         # store tria idx +1  (zero means no edge here)
-        dat = np.repeat(np.arange(1, self.t.shape[0] + 1), 3)
+        dat = cupy.repeat(cupy.arange(1, self.t.shape[0] + 1), 3)
         n = self.v.shape[0]
         return sparse.csc_matrix((dat, (i, j)), shape=(n, n))
 
@@ -252,7 +252,7 @@ class TriaMesh:
             True if no edges with > 2 triangles
         """
 
-        return np.max(self.adj_sym.data) <= 2
+        return cupy.max(self.adj_sym.data) <= 2
 
     def is_oriented(self):
         """
@@ -266,7 +266,7 @@ class TriaMesh:
             True if max(adj_directed)=1
         """
 
-        return np.max(self.adj_dir.data) == 1
+        return cupy.max(self.adj_dir.data) == 1
 
     def euler(self):
         """
@@ -280,8 +280,8 @@ class TriaMesh:
         """
 
         # v can contain unused vertices so we get vnum from trias
-        vnum = len(np.unique(self.t.reshape(-1)))
-        tnum = np.max(self.t.shape)
+        vnum = len(cupy.unique(self.t.reshape(-1)))
+        tnum = cupy.max(self.t.shape)
         enum = int(self.adj_sym.nnz / 2)
         return vnum - enum + tnum
 
@@ -291,7 +291,7 @@ class TriaMesh:
 
         Returns
         -------
-        areas : np.ndarray
+        areas : cupy.ndarray
             array with areas of each triangle
         """
 
@@ -301,11 +301,11 @@ class TriaMesh:
         v1mv0 = v1 - v0
         v2mv1 = v2 - v1
         v0mv2 = v0 - v2
-        a = np.sqrt(np.sum(v1mv0 * v1mv0, axis=1))
-        b = np.sqrt(np.sum(v2mv1 * v2mv1, axis=1))
-        c = np.sqrt(np.sum(v0mv2 * v0mv2, axis=1))
+        a = cupy.sqrt(cupy.sum(v1mv0 * v1mv0, axis=1))
+        b = cupy.sqrt(cupy.sum(v2mv1 * v2mv1, axis=1))
+        c = cupy.sqrt(cupy.sum(v0mv2 * v0mv2, axis=1))
         ph = 0.5 * (a + b + c)
-        areas = np.sqrt(ph * (ph - a) * (ph - b) * (ph - c))
+        areas = cupy.sqrt(ph * (ph - a) * (ph - b) * (ph - c))
         return areas
 
     def area(self):
@@ -319,7 +319,7 @@ class TriaMesh:
         """
 
         areas = self.tria_areas()
-        return np.sum(areas)
+        return cupy.sum(areas)
 
     def volume(self):
         """
@@ -347,9 +347,9 @@ class TriaMesh:
         v2 = self.v[self.t[:, 2], :]
         v1mv0 = v1 - v0
         v2mv0 = v2 - v0
-        cr = np.cross(v1mv0, v2mv0)
-        spatvol = np.sum(v0 * cr, axis=1)
-        vol = np.sum(spatvol) / 6.0
+        cr = cupy.cross(v1mv0, v2mv0)
+        spatvol = cupy.sum(v0 * cr, axis=1)
+        vol = cupy.sum(spatvol) / 6.0
         return vol
 
     def vertex_degrees(self):
@@ -358,11 +358,11 @@ class TriaMesh:
 
         Returns
         -------
-        vdeg : np.ndarray
+        vdeg : cupy.ndarray
             Array of vertex degrees
         """
 
-        vdeg = np.bincount(self.t.reshape(-1))
+        vdeg = cupy.bincount(self.t.reshape(-1))
         return vdeg
 
     def vertex_areas(self):
@@ -371,7 +371,7 @@ class TriaMesh:
 
         Returns
         -------
-        vareas : np.ndarray
+        vareas : cupy.ndarray
             Array of vertex areas
         """
 
@@ -380,11 +380,11 @@ class TriaMesh:
         v2 = self.v[self.t[:, 2], :]
         v1mv0 = v1 - v0
         v2mv0 = v2 - v0
-        cr = np.cross(v1mv0, v2mv0)
-        area = 0.5 * np.sqrt(np.sum(cr * cr, axis=1))
-        area3 = np.repeat(area[:, np.newaxis], 3, 1)
+        cr = cupy.cross(v1mv0, v2mv0)
+        area = 0.5 * cupy.sqrt(cupy.sum(cr * cr, axis=1))
+        area3 = cupy.repeat(area[:, cupy.newaxis], 3, 1)
         # varea = accumarray(t(:),area3(:))./3;
-        vareas = np.bincount(self.t.reshape(-1), area3.reshape(-1)) / 3.0
+        vareas = cupy.bincount(self.t.reshape(-1), area3.reshape(-1)) / 3.0
         return vareas
 
     def avg_edge_length(self):
@@ -399,7 +399,7 @@ class TriaMesh:
 
         # get only upper off-diag elements from symmetric adj matrix
         triadj = sparse.triu(self.adj_sym, 1, format="coo")
-        edgelens = np.sqrt(
+        edgelens = cupy.sqrt(
             ((self.v[triadj.row, :] - self.v[triadj.col, :]) ** 2).sum(1)
         )
         return edgelens.mean()
@@ -411,7 +411,7 @@ class TriaMesh:
 
         Returns
         -------
-        n : np.ndarray
+        n : cupy.ndarray
             normals (num triangles X 3 )
         """
 
@@ -424,11 +424,11 @@ class TriaMesh:
         v1mv0 = v1 - v0
         v2mv0 = v2 - v0
         # Compute cross product
-        n = np.cross(v1mv0, v2mv0)
-        ln = np.sqrt(np.sum(n * n, axis=1))
+        n = cupy.cross(v1mv0, v2mv0)
+        ln = cupy.sqrt(cupy.sum(n * n, axis=1))
         ln[ln < sys.float_info.epsilon] = 1  # avoid division by zero
         n = n / ln.reshape(-1, 1)
-        # lni = np.divide(1.0, ln)
+        # lni = cupy.divide(1.0, ln)
         # n[:, 0] *= lni
         # n[:, 1] *= lni
         # n[:, 2] *= lni
@@ -444,7 +444,7 @@ class TriaMesh:
 
         Returns
         -------
-        n : np.ndarray
+        n : cupy.ndarray
             normals (num triangles X 3 )
 
         Raises
@@ -469,19 +469,19 @@ class TriaMesh:
         # Compute cross product at every vertex
         # will all point in the same direction but have
         #   different lengths depending on spanned area
-        cr0 = np.cross(v1mv0, -v0mv2)
-        cr1 = np.cross(v2mv1, -v1mv0)
-        cr2 = np.cross(v0mv2, -v2mv1)
+        cr0 = cupy.cross(v1mv0, -v0mv2)
+        cr1 = cupy.cross(v2mv1, -v1mv0)
+        cr2 = cupy.cross(v0mv2, -v2mv1)
         # Add normals at each vertex (there can be duplicate indices in t at vertex i)
-        n = np.zeros(self.v.shape)
-        np.add.at(n, self.t[:, 0], cr0)
-        np.add.at(n, self.t[:, 1], cr1)
-        np.add.at(n, self.t[:, 2], cr2)
+        n = cupy.zeros(self.v.shape)
+        cupy.add.at(n, self.t[:, 0], cr0)
+        cupy.add.at(n, self.t[:, 1], cr1)
+        cupy.add.at(n, self.t[:, 2], cr2)
         # Normalize normals
-        ln = np.sqrt(np.sum(n * n, axis=1))
+        ln = cupy.sqrt(cupy.sum(n * n, axis=1))
         ln[ln < sys.float_info.epsilon] = 1  # avoid division by zero
         n = n / ln.reshape(-1, 1)
-        # lni = np.divide(1.0, ln)
+        # lni = cupy.divide(1.0, ln)
         # n[:, 0] *= lni
         # n[:, 1] *= lni
         # n[:, 2] *= lni
@@ -497,8 +497,8 @@ class TriaMesh:
             whether vertex list has more vertices or not
         """
 
-        vnum = np.max(self.v.shape)
-        vnumt = len(np.unique(self.t.reshape(-1)))
+        vnum = cupy.max(self.v.shape)
+        vnumt = len(cupy.unique(self.t.reshape(-1)))
         return vnum != vnumt
 
     def tria_qualities(self):
@@ -512,7 +512,7 @@ class TriaMesh:
 
         Returns
         -------
-        np.ndarray
+        cupy.ndarray
             Array with triangle qualities
         """
 
@@ -524,10 +524,10 @@ class TriaMesh:
         v2mv1 = v2 - v1
         v0mv2 = v0 - v2
         # Compute cross product
-        n = np.cross(v1mv0, -v0mv2)
+        n = cupy.cross(v1mv0, -v0mv2)
         # compute length (2*area)
-        ln = np.sqrt(np.sum(n * n, axis=1))
-        q = 2.0 * np.sqrt(3) * ln
+        ln = cupy.sqrt(cupy.sum(n * n, axis=1))
+        q = 2.0 * cupy.sqrt(3) * ln
         es = (v1mv0 * v1mv0).sum(1) + (v2mv1 * v2mv1).sum(1) + (v0mv2 * v0mv2).sum(1)
         return q / es
 
@@ -541,7 +541,7 @@ class TriaMesh:
 
         Returns
         -------
-        loops : np.ndarray
+        loops : cupy.ndarray
             List of lists with boundary loops
 
         Raises
@@ -565,7 +565,7 @@ class TriaMesh:
         adj.eliminate_zeros()
         # find loops
         # get first column index with an entry:
-        firstcol = np.nonzero(adj.indptr)[0][0] - 1
+        firstcol = cupy.nonzero(adj.indptr)[0][0] - 1
         loops = []
         # loop while we have more first columns:
         while not firstcol == []:
@@ -583,7 +583,7 @@ class TriaMesh:
             # get rid of the visited nodes, store loop and check for another one
             adj.eliminate_zeros()
             loops.append(loop)
-            nz = np.nonzero(adj.indptr)[0]
+            nz = cupy.nonzero(adj.indptr)[0]
             if len(nz) > 0:
                 firstcol = nz[0] - 1
             else:
@@ -612,13 +612,13 @@ class TriaMesh:
         v2mv1 = v2 - v1
         v0mv2 = v0 - v2
         # Compute cross product and area for each triangle:
-        cr = np.cross(v2mv1, v0mv2)
-        areas = 0.5 * np.sqrt(np.sum(cr * cr, axis=1))
+        cr = cupy.cross(v2mv1, v0mv2)
+        areas = 0.5 * cupy.sqrt(cupy.sum(cr * cr, axis=1))
         totalarea = areas.sum()
         areas = areas / totalarea
         centers = (1.0 / 3.0) * (v0 + v1 + v2)
-        c = centers * areas[:, np.newaxis]
-        return np.sum(c, axis=0), totalarea
+        c = centers * areas[:, cupy.newaxis]
+        return cupy.sum(c, axis=0), totalarea
 
     def edges(self, with_boundary=False):
         """
@@ -631,16 +631,16 @@ class TriaMesh:
 
         Returns
         -------
-        vids : np.ndarray
+        vids : cupy.ndarray
             column array with starting and end vertex for each unique inner edge
-        tids : np.ndarray
+        tids : cupy.ndarray
             2 column array with triangle containing the half edge
             from vids[0,:] to vids [1,:] in first column and the
             neighboring triangle in the second column
-        bdrvids : np.ndarray
+        bdrvids : cupy.ndarray
             if with_boundary is true: 2 column array with each
             boundary half-edge
-        bdrtids : np.ndarray
+        bdrtids : cupy.ndarray
             if with_boundary is true: 1 column array with the
             associated triangle to each boundary edge
 
@@ -666,13 +666,13 @@ class TriaMesh:
         adjtria2 = adjtria.transpose()
         adjtriu1 = sparse.triu(adjtria, 0, format="csr")
         adjtriu2 = sparse.triu(adjtria2, 0, format="csr")
-        vids = np.array(np.nonzero(adjtriu1)).T
-        tids = np.empty(vids.shape, dtype=np.int32)
+        vids = cupy.array(cupy.nonzero(adjtriu1)).T
+        tids = cupy.empty(vids.shape, dtype=cupy.int32)
         tids[:, 0] = adjtriu1.data - 1
         tids[:, 1] = adjtriu2.data - 1
         if not with_boundary or bdredges.size == 0:
             return vids, tids
-        bdrv = np.array(np.nonzero(bdredges)).T
+        bdrv = cupy.array(cupy.nonzero(bdredges)).T
         nzids = bdrtrias > -1
         bdrv = bdrv[nzids, :]
         bdrtrias = bdrtrias[nzids].reshape(-1, 1)
@@ -695,19 +695,19 @@ class TriaMesh:
 
         Returns
         -------
-        u_min : np.ndarray
+        u_min : cupy.ndarray
             minimal curvature directions (vnum x 3)
-        u_max : np.ndarray
+        u_max : cupy.ndarray
              maximal curvature directions (vnum x 3)
-        c_min : np.ndarray
+        c_min : cupy.ndarray
              minimal curvature
-        c_max : np.ndarray
+        c_max : cupy.ndarray
              maximal curvature
-        c_mean : np.ndarray
+        c_mean : cupy.ndarray
             mean curvature: (c_min + c_max) / 2.0
-        c_gauss : np.ndarray
+        c_gauss : cupy.ndarray
            Gauss curvature: c_min * c_max
-        normals : np.ndarray
+        normals : cupy.ndarray
            normals (vnum x 3)
         """
 
@@ -720,25 +720,25 @@ class TriaMesh:
         # compute normals for each tria
         tnormals = self.tria_normals()
         # compute dot product of normals at each edge
-        sprod = np.sum(tnormals[tids[:, 0], :] * tnormals[tids[:, 1], :], axis=1)
+        sprod = cupy.sum(tnormals[tids[:, 0], :] * tnormals[tids[:, 1], :], axis=1)
         # compute unsigned angles (clamp to ensure range)
-        angle = np.maximum(sprod, -1)
-        angle = np.minimum(angle, 1)
-        angle = np.arccos(angle)
+        angle = cupy.maximum(sprod, -1)
+        angle = cupy.minimum(angle, 1)
+        angle = cupy.arccos(angle)
         # compute edge vectors and lengths
         edgevecs = self.v[vids[:, 1], :] - self.v[vids[:, 0], :]
-        edgelen = np.sqrt(np.sum(edgevecs**2, axis=1))
+        edgelen = cupy.sqrt(cupy.sum(edgevecs**2, axis=1))
         # get sign (if normals face towards each other or away, across each edge)
-        cp = np.cross(tnormals[tids[:, 0], :], tnormals[tids[:, 1], :])
-        si = -np.sign(np.sum(cp * edgevecs, axis=1))
+        cp = cupy.cross(tnormals[tids[:, 0], :], tnormals[tids[:, 1], :])
+        si = -cupy.sign(cupy.sum(cp * edgevecs, axis=1))
         angle = angle * si
         # normalized edges
         edgelen[edgelen < sys.float_info.epsilon] = 1  # avoid division by zero
         edgevecs = edgevecs / edgelen.reshape(-1, 1)
         # adjust edgelengths so that mean is 1 for numerics
-        edgelen = edgelen / np.mean(edgelen)
+        edgelen = edgelen / cupy.mean(edgelen)
         # symmetric edge matrix (3x3, upper triangular matrix entries):
-        ee = np.empty([edgelen.shape[0], 6])
+        ee = cupy.empty([edgelen.shape[0], 6])
         ee[:, 0] = edgevecs[:, 0] * edgevecs[:, 0]
         ee[:, 1] = edgevecs[:, 0] * edgevecs[:, 1]
         ee[:, 2] = edgevecs[:, 0] * edgevecs[:, 2]
@@ -751,61 +751,61 @@ class TriaMesh:
         ee = ee * angle.reshape(-1, 1)
         # map to vertices
         vnum = self.v.shape[0]
-        vv = np.zeros([vnum, 6])
-        np.add.at(vv, vids[:, 0], ee)
-        np.add.at(vv, vids[:, 1], ee)
-        vdeg = np.zeros([vnum])
-        np.add.at(vdeg, vids[:, 0], 1)
-        np.add.at(vdeg, vids[:, 1], 1)
+        vv = cupy.zeros([vnum, 6])
+        cupy.add.at(vv, vids[:, 0], ee)
+        cupy.add.at(vv, vids[:, 1], ee)
+        vdeg = cupy.zeros([vnum])
+        cupy.add.at(vdeg, vids[:, 0], 1)
+        cupy.add.at(vdeg, vids[:, 1], 1)
         # divide by vertex degree (maybe better by edge length sum??)
         vdeg[vdeg == 0] = 1
         vv = vv / vdeg.reshape(-1, 1)
         # smooth vertex functions
         vv = self.smooth_vfunc(vv, smoothit)
         # create vnum 3x3 symmetric matrices at each vertex
-        mats = np.empty([vnum, 3, 3])
+        mats = cupy.empty([vnum, 3, 3])
         mats[:, 0, :] = vv[:, [0, 1, 2]]
         mats[:, [1, 2], 0] = vv[:, [1, 2]]
         mats[:, 1, [1, 2]] = vv[:, [3, 4]]
         mats[:, 2, 1] = vv[:, 4]
         mats[:, 2, 2] = vv[:, 5]
         # compute eigendecomposition (real for symmetric matrices)
-        evals, evecs = np.linalg.eig(mats)
-        evals = np.real(evals)
-        evecs = np.real(evecs)
+        evals, evecs = cupy.linalg.eig(mats)
+        evals = cupy.real(evals)
+        evecs = cupy.real(evecs)
         # sort evals ascending
         # this is instable in perfectly planar regions
         #  (normal can lie in tangential plane)
-        # i = np.argsort(np.abs(evals), axis=1)
+        # i = cupy.argsort(cupy.abs(evals), axis=1)
         # instead we find direction that aligns with vertex normals as first
         # the other two will be sorted later anyway
         vnormals = self.vertex_normals()
-        dprod = -np.abs(np.squeeze(np.sum(evecs * vnormals[:, :, np.newaxis], axis=1)))
-        i = np.argsort(dprod, axis=1)
-        evals = np.take_along_axis(evals, i, axis=1)
-        it = np.tile(i.reshape((vnum, 1, 3)), (1, 3, 1))
-        evecs = np.take_along_axis(evecs, it, axis=2)
+        dprod = -cupy.abs(cupy.squeeze(cupy.sum(evecs * vnormals[:, :, cupy.newaxis], axis=1)))
+        i = cupy.argsort(dprod, axis=1)
+        evals = cupy.take_along_axis(evals, i, axis=1)
+        it = cupy.tile(i.reshape((vnum, 1, 3)), (1, 3, 1))
+        evecs = cupy.take_along_axis(evecs, it, axis=2)
         # pull min and max curv. dirs
-        u_min = np.squeeze(evecs[:, :, 2])
-        u_max = np.squeeze(evecs[:, :, 1])
+        u_min = cupy.squeeze(evecs[:, :, 2])
+        u_max = cupy.squeeze(evecs[:, :, 1])
         c_min = evals[:, 1]
         c_max = evals[:, 2]
-        normals = np.squeeze(evecs[:, :, 0])
+        normals = cupy.squeeze(evecs[:, :, 0])
         c_mean = (c_min + c_max) / 2.0
         c_gauss = c_min * c_max
         # enforce that min<max
-        i = np.squeeze(np.where(c_min > c_max))
+        i = cupy.squeeze(cupy.where(c_min > c_max))
         c_min[i], c_max[i] = c_max[i], c_min[i]
         u_min[i, :], u_max[i, :] = u_max[i, :], u_min[i, :]
         # flip normals to point towards vertex normals
-        s = np.sign(np.sum(normals * vnormals, axis=1)).reshape(-1, 1)
+        s = cupy.sign(cupy.sum(normals * vnormals, axis=1)).reshape(-1, 1)
         normals = normals * s
         # (here we could also project to tangent plane at vertex (using v_normals)
         # as the normals above are not really good v_normals)
         # flip u_max so that cross(u_min , u_max) aligns with normals
-        u_cross = np.cross(u_min, u_max)
-        d = np.sum(np.multiply(u_cross, normals), axis=1)
-        i = np.squeeze(np.where(d < 0))
+        u_cross = cupy.cross(u_min, u_max)
+        d = cupy.sum(cupy.multiply(u_cross, normals), axis=1)
+        i = cupy.squeeze(cupy.where(d < 0))
         u_max[i, :] = -u_max[i, :]
         return u_min, u_max, c_min, c_max, c_mean, c_gauss, normals
 
@@ -823,13 +823,13 @@ class TriaMesh:
 
         Returns
         -------
-        u_min : np.ndarray
+        u_min : cupy.ndarray
             min curvature direction on triangles
-        u_max : np.ndarray
+        u_max : cupy.ndarray
             max curvature direction on triangles
-        c_min : np.ndarray
+        c_min : cupy.ndarray
             min curvature on triangles
-        c_max : np.ndarray
+        c_max : cupy.ndarray
             max curvature on triangles
         """
 
@@ -841,31 +841,31 @@ class TriaMesh:
         tcmin = self.map_vfunc_to_tfunc(c_min)
         tcmax = self.map_vfunc_to_tfunc(c_max)
         # some Us are almost collinear, strange
-        # print(np.max(np.abs(np.sum(tumin * tumax, axis=1))))
-        # print(np.sum(tumin * tumax, axis=1))
+        # print(cupy.max(cupy.abs(cupy.sum(tumin * tumax, axis=1))))
+        # print(cupy.sum(tumin * tumax, axis=1))
 
         # project onto triangle plane:
         e0 = self.v[self.t[:, 1], :] - self.v[self.t[:, 0], :]
         e1 = self.v[self.t[:, 2], :] - self.v[self.t[:, 0], :]
-        tn = np.cross(e0, e1)
-        tnl = np.sqrt(np.sum(tn * tn, axis=1)).reshape(-1, 1)
-        tn = tn / np.maximum(tnl, 1e-8)
+        tn = cupy.cross(e0, e1)
+        tnl = cupy.sqrt(cupy.sum(tn * tn, axis=1)).reshape(-1, 1)
+        tn = tn / cupy.maximum(tnl, 1e-8)
         # project tumin back to tria plane and normalize
-        tumin2 = tumin - tn * (np.sum(tn * tumin, axis=1)).reshape(-1, 1)
-        tuminl = np.sqrt(np.sum(tumin2 * tumin2, axis=1)).reshape(-1, 1)
-        tumin2 = tumin2 / np.maximum(tuminl, 1e-8)
+        tumin2 = tumin - tn * (cupy.sum(tn * tumin, axis=1)).reshape(-1, 1)
+        tuminl = cupy.sqrt(cupy.sum(tumin2 * tumin2, axis=1)).reshape(-1, 1)
+        tumin2 = tumin2 / cupy.maximum(tuminl, 1e-8)
         # project tumax back to tria plane and normalize
         #   (will not be orthogonal to tumin)
-        # tumax1 = tumax - tn * (np.sum(tn * tumax, axis=1)).reshape(-1, 1)
+        # tumax1 = tumax - tn * (cupy.sum(tn * tumax, axis=1)).reshape(-1, 1)
         # in a second step orthorgonalize to tumin
-        # tumax1 = tumax1 - tumin * (np.sum(tumin * tumax1, axis=1)).reshape(-1, 1)
+        # tumax1 = tumax1 - tumin * (cupy.sum(tumin * tumax1, axis=1)).reshape(-1, 1)
         # normalize
-        # tumax1l = np.sqrt(np.sum(tumax1 * tumax1, axis=1)).reshape(-1, 1)
-        # tumax1 = tumax1 / np.maximum(tumax1l, 1e-8)
+        # tumax1l = cupy.sqrt(cupy.sum(tumax1 * tumax1, axis=1)).reshape(-1, 1)
+        # tumax1 = tumax1 / cupy.maximum(tumax1l, 1e-8)
         # or simply create vector that is orthogonal to both normal and tumin
-        tumax2 = np.cross(tn, tumin2)
+        tumax2 = cupy.cross(tn, tumin2)
         # if really necessary flip direction if that is true for inputs
-        # tumax3 = np.sign(np.sum(np.cross(tumin, tumax) * tn, axis=1)).reshape(-1, 1)
+        # tumax3 = cupy.sign(cupy.sum(cupy.cross(tumin, tumax) * tn, axis=1)).reshape(-1, 1)
         #           * tumax2
         # I wonder how much changes, if we first map umax to tria and then
         #   find orthogonal umin next?
@@ -877,7 +877,7 @@ class TriaMesh:
         Modifies the vertices.
         """
         centroid, area = self.centroid()
-        self.v = (1.0 / np.sqrt(area)) * (self.v - centroid)
+        self.v = (1.0 / cupy.sqrt(area)) * (self.v - centroid)
 
     def rm_free_vertices_(self):
         """
@@ -889,9 +889,9 @@ class TriaMesh:
 
         Returns
         -------
-        vkeep : np.ndarray
+        vkeep : cupy.ndarray
             Indices (from original list) of kept vertices
-        vdel : np.ndarray
+        vdel : cupy.ndarray
             Indices of deleted (unused) vertices
 
         Raises
@@ -901,25 +901,25 @@ class TriaMesh:
         """
 
         tflat = self.t.reshape(-1)
-        vnum = np.max(self.v.shape)
-        if np.max(tflat) >= vnum:
+        vnum = cupy.max(self.v.shape)
+        if cupy.max(tflat) >= vnum:
             raise ValueError("Max index exceeds number of vertices")
         # determine which vertices to keep
-        vkeep = np.full(vnum, False, dtype=bool)
+        vkeep = cupy.full(vnum, False, dtype=bool)
         vkeep[tflat] = True
         # list of deleted vertices (old indices)
-        vdel = np.nonzero(~vkeep)[0]
+        vdel = cupy.nonzero(~vkeep)[0]
         # if nothing to delete return
         if len(vdel) == 0:
-            return np.arange(vnum), []
+            return cupy.arange(vnum), []
         # delete unused vertices
         vnew = self.v[vkeep, :]
         # create lookup table
-        tlookup = np.cumsum(vkeep) - 1
+        tlookup = cupy.cumsum(vkeep) - 1
         # reindex tria
         tnew = tlookup[self.t]
         # convert vkeep to index list
-        vkeep = np.nonzero(vkeep)[0]
+        vkeep = cupy.nonzero(vkeep)[0]
         # set new vertices and tria and re-init adj matrices
         self.__init__(vnew, tnew)
         return vkeep, vdel
@@ -942,22 +942,22 @@ class TriaMesh:
             # create new vertex index for each edge
             edgeno = adjtriu.data.shape[0]
             vno = self.v.shape[0]
-            adjtriu.data = np.arange(vno, vno + edgeno)
+            adjtriu.data = cupy.arange(vno, vno + edgeno)
             # get vertices at edge midpoints:
             rows, cols = adjtriu.nonzero()
             vnew = 0.5 * (self.v[rows, :] + self.v[cols, :])
-            vnew = np.append(self.v, vnew, axis=0)
+            vnew = cupy.append(self.v, vnew, axis=0)
             # make adj symmetric again
             adjtriu = adjtriu + adjtriu.T
             # create 4 new triangles for each old one
-            e1 = np.asarray(adjtriu[self.t[:, 0], self.t[:, 1]].flat)
-            e2 = np.asarray(adjtriu[self.t[:, 1], self.t[:, 2]].flat)
-            e3 = np.asarray(adjtriu[self.t[:, 2], self.t[:, 0]].flat)
-            t1 = np.column_stack((self.t[:, 0], e1, e3))
-            t2 = np.column_stack((self.t[:, 1], e2, e1))
-            t3 = np.column_stack((self.t[:, 2], e3, e2))
-            t4 = np.column_stack((e1, e2, e3))
-            tnew = np.reshape(np.concatenate((t1, t2, t3, t4), axis=1), (-1, 3))
+            e1 = cupy.asarray(adjtriu[self.t[:, 0], self.t[:, 1]].flat)
+            e2 = cupy.asarray(adjtriu[self.t[:, 1], self.t[:, 2]].flat)
+            e3 = cupy.asarray(adjtriu[self.t[:, 2], self.t[:, 0]].flat)
+            t1 = cupy.column_stack((self.t[:, 0], e1, e3))
+            t2 = cupy.column_stack((self.t[:, 1], e2, e1))
+            t3 = cupy.column_stack((self.t[:, 2], e3, e2))
+            t4 = cupy.column_stack((e1, e2, e3))
+            tnew = cupy.reshape(cupy.concatenate((t1, t2, t3, t4), axis=1), (-1, 3))
             # set new vertices and tria and re-init adj matrices
             self.__init__(vnew, tnew)
 
@@ -967,7 +967,7 @@ class TriaMesh:
 
         Parameters
         ----------
-        d : int or np.ndarray
+        d : int or cupy.ndarray
             move distance
         """
 
@@ -1010,18 +1010,18 @@ class TriaMesh:
             t1 = self.t[:, 1]
             t2 = self.t[:, 2]
             # i,j are beginning and end points of each half edge
-            i = np.column_stack((t0, t1, t2)).reshape(-1)
-            j = np.column_stack((t1, t2, t0)).reshape(-1)
+            i = cupy.column_stack((t0, t1, t2)).reshape(-1)
+            j = cupy.column_stack((t1, t2, t0)).reshape(-1)
             # tidx for each half edge
-            tidx = np.repeat(np.arange(0, self.t.shape[0]), 3)
+            tidx = cupy.repeat(cupy.arange(0, self.t.shape[0]), 3)
             # if edge points from smaller to larger index or not
             dirij = i < j
-            ndirij = np.logical_not(dirij)
-            ij = np.column_stack((i, j))
+            ndirij = cupy.logical_not(dirij)
+            ij = cupy.column_stack((i, j))
             # make sure i < j
-            ij[np.ix_(ndirij, [1, 0])] = ij[np.ix_(ndirij, [0, 1])]
+            ij[cupy.ix_(ndirij, [1, 0])] = ij[cupy.ix_(ndirij, [0, 1])]
             # remove rows with unique (boundary) edges (half-edges without partner)
-            u, ind, c = np.unique(ij, axis=0, return_index=True, return_counts=True)
+            u, ind, c = cupy.unique(ij, axis=0, return_index=True, return_counts=True)
             bidx = ind[c == 1]
             # assert remaining edges have two triangles: min = max =2
             # note if we have only a single triangle or triangle soup
@@ -1031,23 +1031,23 @@ class TriaMesh:
                     "Without boundary edges, all should have two triangles!"
                 )
             # inner is a mask for inner edges
-            inner = np.ones(ij.shape[0], bool)
+            inner = cupy.ones(ij.shape[0], bool)
             inner[bidx] = False
             # stack i,j,tria_id, edge_direction (smaller to larger vidx) for inner edges
-            ijk = np.column_stack((ij, tidx, dirij))[inner, :]
+            ijk = cupy.column_stack((ij, tidx, dirij))[inner, :]
             # sort according to first two columns
-            ind = np.lexsort(
+            ind = cupy.lexsort(
                 (ijk[:, 0], ijk[:, 1])
             )  # Sort by column 0, then by column 1
             ijks = ijk[ind, :]
             # select both tria indices at each edge and the edge directions
             tdir = ijks.reshape((-1, 8))[:, [2, 6, 3, 7]]
             # compute sign vector (1 if edge points from small to large, else -1)
-            tsgn = 2 * np.logical_xor(tdir[:, 2], tdir[:, 3]) - 1
+            tsgn = 2 * cupy.logical_xor(tdir[:, 2], tdir[:, 3]) - 1
             # append to itself for symmetry
-            tsgn = np.append(tsgn, tsgn)
-            i = np.append(tdir[:, 0], tdir[:, 1])
-            j = np.append(tdir[:, 1], tdir[:, 0])
+            tsgn = cupy.append(tsgn, tsgn)
+            i = cupy.append(tdir[:, 0], tdir[:, 1])
+            j = cupy.append(tdir[:, 1], tdir[:, 0])
             # construct sparse tria neighbor matrix where
             #   weights indicate normal flips across edge
             tmat = sparse.csc_matrix((tsgn, (i, j)))
@@ -1064,7 +1064,7 @@ class TriaMesh:
             while len(v.data) < tdim:
                 count = count + 1
                 v = tmat * v
-                v.data = np.sign(v.data)
+                v.data = cupy.sign(v.data)
             endt = time.time()
             print(
                 "Searched mesh after {} flooding iterations ({} sec).".format(
@@ -1075,7 +1075,7 @@ class TriaMesh:
             idx = v.toarray() == -1
             idx = idx.reshape(-1)
             tnew = self.t
-            tnew[np.ix_(idx, [1, 0])] = tnew[np.ix_(idx, [0, 1])]
+            tnew[cupy.ix_(idx, [1, 0])] = tnew[cupy.ix_(idx, [0, 1])]
             self.__init__(self.v, tnew)
             flipped = idx.sum()
         # flip orientation on all trias if volume is negative:
@@ -1092,7 +1092,7 @@ class TriaMesh:
 
         Parameters
         ----------
-        tfunc : np.ndarray
+        tfunc : cupy.ndarray
             Float vector or matrix (#t x N) of values at vertices
         weighted : bool, default=False
             False, weigh only by 1/3, e.g. to compute
@@ -1104,7 +1104,7 @@ class TriaMesh:
 
         Returns
         -------
-        vfunc : np.ndarray
+        vfunc : cupy.ndarray
             Function on vertices vector or matrix (#v x N)
 
         Raises
@@ -1117,18 +1117,18 @@ class TriaMesh:
             raise ValueError(
                 "Error: length of tfunc needs to match number of triangles"
             )
-        tfunca = np.array(tfunc)
+        tfunca = cupy.array(tfunc)
         # make sure tfunc is 2D (even with only 1-dim input)
         if tfunca.ndim == 1:
-            tfunca = tfunca[:, np.newaxis]
+            tfunca = tfunca[:, cupy.newaxis]
         if weighted:
-            areas = self.tria_areas()[:, np.newaxis]  # to enable broadcasting
+            areas = self.tria_areas()[:, cupy.newaxis]  # to enable broadcasting
             tfunca = tfunca * areas
-        vfunc = np.zeros((self.v.shape[0], tfunca.shape[1]))
-        np.add.at(vfunc, self.t[:, 0], tfunca)
-        np.add.at(vfunc, self.t[:, 1], tfunca)
-        np.add.at(vfunc, self.t[:, 2], tfunca)
-        return np.squeeze(vfunc / 3.0)
+        vfunc = cupy.zeros((self.v.shape[0], tfunca.shape[1]))
+        cupy.add.at(vfunc, self.t[:, 0], tfunca)
+        cupy.add.at(vfunc, self.t[:, 1], tfunca)
+        cupy.add.at(vfunc, self.t[:, 2], tfunca)
+        return cupy.squeeze(vfunc / 3.0)
 
     def map_vfunc_to_tfunc(self, vfunc):
         """
@@ -1137,7 +1137,7 @@ class TriaMesh:
 
         Parameters
         ----------
-        vfunc : np.ndarray
+        vfunc : cupy.ndarray
             Float vector or matrix (#t x N) of values at vertices
 
         Returns
@@ -1153,8 +1153,8 @@ class TriaMesh:
 
         if self.v.shape[0] != vfunc.shape[0]:
             raise ValueError("Error: length of vfunc needs to match number of vertices")
-        vfunc = np.array(vfunc) / 3.0
-        tfunc = np.sum(vfunc[self.t], axis=1)
+        vfunc = cupy.array(vfunc) / 3.0
+        tfunc = cupy.sum(vfunc[self.t], axis=1)
         return tfunc
 
     def smooth_vfunc(self, vfunc, n=1):
@@ -1176,17 +1176,17 @@ class TriaMesh:
 
         if vfunc is None:
             vfunc = self.v
-        vfunc = np.array(vfunc)
+        vfunc = cupy.array(vfunc)
         if self.v.shape[0] != vfunc.shape[0]:
             raise ValueError("Error: length of vfunc needs to match number of vertices")
-        areas = self.vertex_areas()[:, np.newaxis]
+        areas = self.vertex_areas()[:, cupy.newaxis]
         adj = self.adj_sym.copy()
         # binarize:
-        adj.data = np.ones(adj.data.shape)
+        adj.data = cupy.ones(adj.data.shape)
         # adjust columns to contain areas of vertex i
         adj2 = adj.multiply(areas)
         # rowsum is the area sum of 1-ring neighbors
-        rowsum = np.sum(adj2, axis=1)
+        rowsum = cupy.sum(adj2, axis=1)
         # normalize rows to sum = 1
         adj2 = adj2.multiply(1.0 / rowsum)
         # apply sparse matrix n times (fast in spite of loop)

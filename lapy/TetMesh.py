@@ -10,8 +10,8 @@ Original Author: Martin Reuter
 Date: Feb-01-2019
 """
 
-import numpy as np
-from scipy import sparse
+import cupy
+from cupyx.scipy import sparse
 
 
 class TetMesh:
@@ -64,10 +64,10 @@ class TetMesh:
             Max index exceeds number of vertices
         """
 
-        self.v = np.array(v)
-        self.t = np.array(t)
-        vnum = np.max(self.v.shape)
-        if np.max(self.t) >= vnum:
+        self.v = cupy.array(v)
+        self.t = cupy.array(t)
+        vnum = cupy.max(self.v.shape)
+        if cupy.max(self.t) >= vnum:
             raise ValueError("Max index exceeds number of vertices")
         # put more checks here (e.g. the dim 3 conditions on columns)
         # self.orient_()
@@ -91,13 +91,13 @@ class TetMesh:
         t2 = self.t[:, 1]
         t3 = self.t[:, 2]
         t4 = self.t[:, 3]
-        i = np.column_stack((t1, t2, t2, t3, t3, t1, t1, t2, t3, t4, t4, t4)).reshape(
+        i = cupy.column_stack((t1, t2, t2, t3, t3, t1, t1, t2, t3, t4, t4, t4)).reshape(
             -1
         )
-        j = np.column_stack((t2, t1, t3, t2, t1, t3, t4, t4, t4, t1, t2, t3)).reshape(
+        j = cupy.column_stack((t2, t1, t3, t2, t1, t3, t4, t4, t4, t1, t2, t3)).reshape(
             -1
         )
-        adj = sparse.csc_matrix((np.ones(i.shape), (i, j)))
+        adj = sparse.csc_matrix((cupy.ones(i.shape), (i, j)))
         return adj
 
     def has_free_vertices(self):
@@ -111,8 +111,8 @@ class TetMesh:
             whether vertex list has more vertices than tetra or not
         """
 
-        vnum = np.max(self.v.shape)
-        vnumt = len(np.unique(self.t.reshape(-1)))
+        vnum = cupy.max(self.v.shape)
+        vnumt = len(cupy.unique(self.t.reshape(-1)))
         return vnum != vnumt
 
     def is_oriented(self):
@@ -140,15 +140,15 @@ class TetMesh:
         e2 = v2 - v0
         e3 = v3 - v0
         # Compute cross product and 6 * vol for each triangle:
-        cr = np.cross(e0, e2)
-        vol = np.sum(e3 * cr, axis=1)
-        if np.max(vol) < 0.0:
+        cr = cupy.cross(e0, e2)
+        vol = cupy.sum(e3 * cr, axis=1)
+        if cupy.max(vol) < 0.0:
             print("All tet orientations are flipped")
             return False
-        elif np.min(vol) > 0.0:
+        elif cupy.min(vol) > 0.0:
             print("All tet orientations are correct")
             return True
-        elif np.count_nonzero(vol) < len(vol):
+        elif cupy.count_nonzero(vol) < len(vol):
             print("We have degenerated zero-volume tetrahedra")
             return False
         else:
@@ -167,7 +167,7 @@ class TetMesh:
 
         # get only upper off-diag elements from symmetric adj matrix
         triadj = sparse.triu(self.adj_sym, 1, format="coo")
-        edgelens = np.sqrt(
+        edgelens = cupy.sqrt(
             ((self.v[triadj.row, :] - self.v[triadj.col, :]) ** 2).sum(1)
         )
         return edgelens.mean()
@@ -199,25 +199,25 @@ class TetMesh:
         from .TriaMesh import TriaMesh
 
         # get all triangles
-        allt = np.vstack(
+        allt = cupy.vstack(
             (
-                self.t[:, np.array([3, 1, 2])],
-                self.t[:, np.array([2, 0, 3])],
-                self.t[:, np.array([1, 3, 0])],
-                self.t[:, np.array([0, 2, 1])],
+                self.t[:, cupy.array([3, 1, 2])],
+                self.t[:, cupy.array([2, 0, 3])],
+                self.t[:, cupy.array([1, 3, 0])],
+                self.t[:, cupy.array([0, 2, 1])],
             )
         )
         # sort rows so that faces are reorder in ascending order of indices
-        allts = np.sort(allt, axis=1)
+        allts = cupy.sort(allt, axis=1)
         # find unique trias without a neighbor
-        tria, indices, count = np.unique(
+        tria, indices, count = cupy.unique(
             allts, axis=0, return_index=True, return_counts=True
         )
         tria = allt[indices[count == 1]]
-        print("Found " + str(np.size(tria, 0)) + " triangles on boundary.")
+        print("Found " + str(cupy.size(tria, 0)) + " triangles on boundary.")
         # if we have tetra function, map these to the boundary triangles
         if tetfunc is not None:
-            alltidx = np.tile(np.arange(self.t.shape[0]), 4)
+            alltidx = cupy.tile(cupy.arange(self.t.shape[0]), 4)
             tidx = alltidx[indices[count == 1]]
             triafunc = tetfunc[tidx]
             return TriaMesh(self.v, tria), triafunc
@@ -234,9 +234,9 @@ class TetMesh:
 
         Returns
         -------
-        vkeep: np.ndarray
+        vkeep: cupy.ndarray
             Indices (from original list) of kept vertices
-        vdel: np.ndarray
+        vdel: cupy.ndarray
             Indices of deleted (unused) vertices
 
         Raises
@@ -246,25 +246,25 @@ class TetMesh:
         """
 
         tflat = self.t.reshape(-1)
-        vnum = np.max(self.v.shape)
-        if np.max(tflat) >= vnum:
+        vnum = cupy.max(self.v.shape)
+        if cupy.max(tflat) >= vnum:
             raise ValueError("Max index exceeds number of vertices")
         # determine which vertices to keep
-        vkeep = np.full(vnum, False, dtype=bool)
+        vkeep = cupy.full(vnum, False, dtype=bool)
         vkeep[tflat] = True
         # list of deleted vertices (old indices)
-        vdel = np.nonzero(~vkeep)[0]
+        vdel = cupy.nonzero(~vkeep)[0]
         # if nothing to delete return
         if len(vdel) == 0:
-            return np.arange(vnum), []
+            return cupy.arange(vnum), []
         # delete unused vertices
         vnew = self.v[vkeep, :]
         # create lookup table
-        tlookup = np.cumsum(vkeep) - 1
+        tlookup = cupy.cumsum(vkeep) - 1
         # reindex tria
         tnew = tlookup[self.t]
         # convert vkeep to index list
-        vkeep = np.nonzero(vkeep)[0]
+        vkeep = cupy.nonzero(vkeep)[0]
         self.v = vnew
         self.t = tnew
         return vkeep, vdel
@@ -294,19 +294,19 @@ class TetMesh:
         e2 = v2 - v0
         e3 = v3 - v0
         # Compute cross product and 6 * vol for each tetra:
-        cr = np.cross(e0, e2)
-        vol = np.sum(e3 * cr, axis=1)
+        cr = cupy.cross(e0, e2)
+        vol = cupy.sum(e3 * cr, axis=1)
         negtet = vol < 0.0
-        negnum = np.sum(negtet)
+        negnum = cupy.sum(negtet)
         if negnum == 0:
             print("Mesh is oriented, nothing to do")
             return 0
         tnew = self.t
-        # negtet = np.where(negtet)
+        # negtet = cupy.where(negtet)
         temp = self.t[negtet, 1]
         tnew[negtet, 1] = self.t[negtet, 2]
         tnew[negtet, 2] = temp
-        onum = np.sum(negtet)
+        onum = cupy.sum(negtet)
         print("Flipped " + str(onum) + " tetrahedra")
         self.__init__(self.v, tnew)
         return onum

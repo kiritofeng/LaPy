@@ -1,4 +1,4 @@
-import numpy as np
+import cupy
 
 
 def import_vfunc_deprecated(infile):
@@ -61,13 +61,11 @@ def import_vfunc(filename):
 
     Returns
     -------
-    vals : np.ndarray
+    vals : cupy.ndarray
         list of vfunc parameters
     """
 
     import re
-
-    import numpy as np
 
     try:
         with open(filename) as f:
@@ -85,9 +83,9 @@ def import_vfunc(filename):
     if len(txt) == 1:
         txt = [re.split("[,;]", x) for x in txt][0]
 
-    txt = [np.float(x) for x in txt]
+    txt = [float(x) for x in txt]
 
-    # txt = np.array(txt)
+    # txt = cupy.array(txt)
 
     return txt
 
@@ -181,7 +179,7 @@ def import_ev(infile):
                     evals = evals + ll[i].strip().replace("{", "").replace("}", "")
                     i = i + 1
                 evals = evals + ll[i].strip().replace("{", "").replace("}", "")
-            evals = np.array(evals.split(";")).astype(np.float)
+            evals = cupy.array(evals.split(";")).astype(cupy.float)
             d.update({"Eigenvalues": evals})
             i = i + 1
         elif ll[i].lstrip().startswith("Eigenvectors"):
@@ -189,7 +187,7 @@ def import_ev(infile):
             while not (ll[i].strip().startswith("sizes")):
                 i = i + 1
             d.update(
-                {"EigenvectorsSize": np.array(ll[i].strip().split()[1:]).astype(np.int)}
+                {"EigenvectorsSize": cupy.array(ll[i].strip().split()[1:]).astype(cupy.int)}
             )
             i = i + 1
             while ll[i].find("{") < 0:  # possibly introduce termination criterion
@@ -206,11 +204,11 @@ def import_ev(infile):
                 evecs = evecs + ll[i].strip().replace("{", "").replace("}", "").replace(
                     "(", ""
                 ).replace(")", "")
-            evecs = np.array(
+            evecs = cupy.array(
                 evecs.replace(";", " ").replace(",", " ").strip().split()
-            ).astype(np.float)
+            ).astype(cupy.float)
             if len(evecs) == (d["EigenvectorsSize"][0] * d["EigenvectorsSize"][1]):
-                evecs = np.transpose(np.reshape(evecs, d["EigenvectorsSize"][1::-1]))
+                evecs = cupy.transpose(cupy.reshape(evecs, d["EigenvectorsSize"][1::-1]))
                 d.update({"Eigenvectors": evecs})
             else:
                 print(
@@ -308,7 +306,7 @@ def export_ev(outfile, d):
         f.write("sizes: " + " ".join(map(str, d["Eigenvectors"].shape)) + "\n")
         f.write("\n")
         f.write("{ ")
-        for i in range(np.shape(d["Eigenvectors"])[1] - 1):
+        for i in range(cupy.shape(d["Eigenvectors"])[1] - 1):
             f.write("(")
             f.write(",".join(map(str, d["Eigenvectors"][:, i])))
             f.write(") ;\n")
@@ -317,7 +315,7 @@ def export_ev(outfile, d):
             ",".join(
                 map(
                     str,
-                    d["Eigenvectors"][:, np.shape(d["Eigenvectors"])[1] - 1],
+                    d["Eigenvectors"][:, cupy.shape(d["Eigenvectors"])[1] - 1],
                 )
             )
         )

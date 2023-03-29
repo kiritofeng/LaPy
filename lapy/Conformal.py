@@ -12,9 +12,9 @@
 # SIAM Journal on Imaging Sciences, vol. 8, no. 1, pp. 67-94, 2015.
 
 
-import numpy as np
-from scipy import sparse
-from scipy.optimize import minimize
+import cupy
+from cupyx.scipy import sparse
+from cupyx.scipy.optimize import minimize
 
 from .Solver import Solver
 from .TriaMesh import TriaMesh
@@ -32,7 +32,7 @@ def spherical_conformal_map(tria):
 
     Returns
     -------
-    mapping: np.ndarray of shape (n,3)
+    mapping: cupy.ndarray of shape (n,3)
         vertex coordinates of the spherical conformal parameterization
 
     Notes
@@ -58,7 +58,7 @@ def spherical_conformal_map(tria):
 
     # Find the most regular triangle as the "big triangle"
     tquals = tria.tria_qualities()
-    bigtri = np.argmax(tquals)
+    bigtri = cupy.argmax(tquals)
     # print(bigtri, tquals[bigtri])
     # If it turns out that the spherical parameterization result is homogeneous
     # you can try to change bigtri to the id of some other triangles with good quality
@@ -88,37 +88,37 @@ def spherical_conformal_map(tria):
     x0, y0, x1, y1 = 0, 0, 1, 0
     a = tria.v[p1, :] - tria.v[p0, :]
     b = tria.v[p2, :] - tria.v[p0, :]
-    sin1 = np.linalg.norm(np.cross(a, b)) / (np.linalg.norm(a) * np.linalg.norm(b))
-    ori_h = np.linalg.norm(b) * sin1
-    ratio = np.sqrt(((x0 - x1) ** 2 + (y0 - y1) ** 2)) / np.linalg.norm(a)
+    sin1 = cupy.linalg.norm(cupy.cross(a, b)) / (cupy.linalg.norm(a) * cupy.linalg.norm(b))
+    ori_h = cupy.linalg.norm(b) * sin1
+    ratio = cupy.sqrt(((x0 - x1) ** 2 + (y0 - y1) ** 2)) / cupy.linalg.norm(a)
     y2 = ori_h * ratio  # compute the coordinates of the third vertex
-    x2 = np.sqrt(np.linalg.norm(b) ** 2 * ratio**2 - y2**2)
+    x2 = cupy.sqrt(cupy.linalg.norm(b) ** 2 * ratio**2 - y2**2)
     # should be around (0.5, sqrt(3)/2) if we found an equilateral bigtri
 
     # Solve the Laplace equation to obtain a harmonic map
-    c = np.zeros((nv, 1))
+    c = cupy.zeros((nv, 1))
     c[p0], c[p1], c[p2] = x0, x1, x2
-    d = np.zeros((nv, 1))
+    d = cupy.zeros((nv, 1))
     d[p0], d[p1], d[p2] = y0, y1, y2
-    rhs = np.empty(c.shape[:-1], dtype=complex)
+    rhs = cupy.empty(c.shape[:-1], dtype=complex)
     rhs.real = c.flatten()
     rhs.imag = d.flatten()
 
     z = sparse_symmetric_solve(M, rhs)
-    z = np.squeeze(np.array(z))
-    z = z - np.mean(z, axis=0)
+    z = cupy.squeeze(cupy.array(z))
+    z = z - cupy.mean(z, axis=0)
 
     # inverse stereographic projection (not scaled well)
     S = inverse_stereographic(z)
 
     # Find optimal big triangle size
-    w = np.empty(S.shape[:-1], dtype=complex)
+    w = cupy.empty(S.shape[:-1], dtype=complex)
     w.real = (S[:, 0] / (1 + S[:, 2])).flatten()
     w.imag = (S[:, 1] / (1 + S[:, 2])).flatten()
 
     # find the index of the southernmost triangle
-    index = np.argsort(
-        np.abs(z[tria.t[:, 0]]) + np.abs(z[tria.t[:, 1]]) + np.abs(z[tria.t[:, 2]])
+    index = cupy.argsort(
+        cupy.abs(z[tria.t[:, 0]]) + cupy.abs(z[tria.t[:, 1]]) + cupy.abs(z[tria.t[:, 2]])
     )
     inner = index[0]
     if inner == bigtri:
@@ -126,40 +126,40 @@ def spherical_conformal_map(tria):
 
     # Compute the size of the northern most and the southern most triangles
     NorthTriSide = (
-        np.abs(z[tria.t[bigtri, 0]] - z[tria.t[bigtri, 1]])
-        + np.abs(z[tria.t[bigtri, 1]] - z[tria.t[bigtri, 2]])
-        + np.abs(z[tria.t[bigtri, 2]] - z[tria.t[bigtri, 0]])
+        cupy.abs(z[tria.t[bigtri, 0]] - z[tria.t[bigtri, 1]])
+        + cupy.abs(z[tria.t[bigtri, 1]] - z[tria.t[bigtri, 2]])
+        + cupy.abs(z[tria.t[bigtri, 2]] - z[tria.t[bigtri, 0]])
     ) / 3.0
 
     SouthTriSide = (
-        np.abs(w[tria.t[inner, 0]] - w[tria.t[inner, 1]])
-        + np.abs(w[tria.t[inner, 1]] - w[tria.t[inner, 2]])
-        + np.abs(w[tria.t[inner, 2]] - w[tria.t[inner, 0]])
+        cupy.abs(w[tria.t[inner, 0]] - w[tria.t[inner, 1]])
+        + cupy.abs(w[tria.t[inner, 1]] - w[tria.t[inner, 2]])
+        + cupy.abs(w[tria.t[inner, 2]] - w[tria.t[inner, 0]])
     ) / 3.0
 
     # rescale to get the best distribution
-    z = z * np.sqrt(NorthTriSide * SouthTriSide) / NorthTriSide
+    z = z * cupy.sqrt(NorthTriSide * SouthTriSide) / NorthTriSide
 
     # inverse stereographic projection (now distributed well)
     S = inverse_stereographic(z)
 
-    if np.isnan(np.sum(S)):
+    if cupy.isnan(cupy.sum(S)):
         raise ValueError("Error: projection contains nan value(s)!")
         # could revert to spherical tutte map here
 
     # South pole step
-    idx = np.argsort(S[:, 2])
+    idx = cupy.argsort(S[:, 2])
 
     # number of points near the south pole to be fixed
     # simply set it to be 1/10 of the total number of vertices (can be changed)
     # In case the spherical parameterization is not good, change 10 to
     # something smaller (e.g. 2)
-    fixnum = np.maximum(round(nv / 10), 3)
-    fixed = idx[0 : np.minimum(nv, fixnum)]
+    fixnum = cupy.maximum(round(nv / 10), 3)
+    fixed = idx[0 : cupy.minimum(nv, fixnum)]
 
     # south pole stereographic projection
-    P = np.column_stack(
-        (S[:, 0] / (1 + S[:, 2]), S[:, 1] / (1 + S[:, 2]), np.zeros(nv))
+    P = cupy.column_stack(
+        (S[:, 0] / (1 + S[:, 2]), S[:, 1] / (1 + S[:, 2]), cupy.zeros(nv))
     )
 
     # compute the Beltrami coefficient (value per triangle)
@@ -169,15 +169,15 @@ def spherical_conformal_map(tria):
     # compose the map with another quasi-conformal map to cancel the distortion
     mapping = linear_beltrami_solver(triasouth, mu, fixed, P[fixed, :])
 
-    if np.isnan(np.sum(mapping)):
+    if cupy.isnan(cupy.sum(mapping)):
         # if the result has NaN entries, then most probably the number of
         # boundary constraints is not large enough
         # increase the number of boundary constrains and run again
         print("South pole compsed map has nan value(s)!")
         fixnum = fixnum * 5  # again, this number can be changed
-        fixed = idx[0 : np.minimum(nv, fixnum)]
+        fixed = idx[0 : cupy.minimum(nv, fixnum)]
         mapping = linear_beltrami_solver(triasouth, mu, fixed, P[fixed, :])
-        if np.isnan(np.sum(mapping)):
+        if cupy.isnan(cupy.sum(mapping)):
             mapping = P  # use the old result
 
     # inverse south pole stereographic projection
@@ -194,12 +194,12 @@ def mobius_area_correction_spherical(tria, mapping):
     -------
     tria : TriaMesh
         (vertices, triangle) of genus-0 closed triangle mesh
-    mapping : np.ndarray of shape (n,3)
+    mapping : cupy.ndarray of shape (n,3)
         vertex coordinates of the spherical conformal parameterization
 
     Returns
     -------
-    map_mobius: np.ndarray of shape (n,3)
+    map_mobius: cupy.ndarray of shape (n,3)
         vertex coordinates of the updated spherical conformal parameterization
     result: OptimizeResult
         the optimal parameters (x) for the Mobius transformation, where
@@ -238,11 +238,11 @@ def mobius_area_correction_spherical(tria, mapping):
 
     # objective function: mean(abs(log(area_map/area_t)))
     def d_area(xx):
-        a = np.abs(np.log(area_map(xx) / area_t))
-        return (a[np.isfinite(a)]).mean()
+        a = cupy.abs(cupy.log(area_map(xx) / area_t))
+        return (a[cupy.isfinite(a)]).mean()
 
     # Optimization setup
-    x0 = np.array([1, 0, 0, 0, 0, 0, 1, 0])  # initial guess
+    x0 = cupy.array([1, 0, 0, 0, 0, 0, 1, 0])  # initial guess
     # lower and upper bounds
     bnds = (
         (-100, 100),
@@ -277,12 +277,12 @@ def beltrami_coefficient(tria, mapping):
     tria : TriaMesh
         (vertices, triangle) of genus-0 closed triangle mesh
         TriaMesh should be planar mapping on complex plane
-    mapping : np.ndarray of shape (n,3)
+    mapping : cupy.ndarray of shape (n,3)
         coordinates of the spherical conformal parameterization
 
     Returns
     -------
-    mu: np.ndarray of complex beltrami coefficient per triangle
+    mu: cupy.ndarray of complex beltrami coefficient per triangle
 
     Notes
     -------
@@ -301,7 +301,7 @@ def beltrami_coefficient(tria, mapping):
     """
 
     # here we should be in the plane
-    if np.amax(tria.v[:, 2]) - np.amin(tria.v[:, 2]) > 0.001:
+    if cupy.amax(tria.v[:, 2]) - cupy.amin(tria.v[:, 2]) > 0.001:
         print("ERROR: mesh should be on complex plane ..")
         raise ValueError("not planar")
 
@@ -313,18 +313,18 @@ def beltrami_coefficient(tria, mapping):
     e1 = v0 - v2
     e2 = v1 - v0
     # double areas
-    areas2 = np.cross(e0, e1)  # returns z-component is length
+    areas2 = cupy.cross(e0, e1)  # returns z-component is length
 
     # create tria,vertex matrices (summing area normalized edge coords)
     nf = tria.t.shape[0]
-    tids = np.arange(nf)
-    i = np.column_stack((tids, tids, tids)).reshape(-1)
+    tids = cupy.arange(nf)
+    i = cupy.column_stack((tids, tids, tids)).reshape(-1)
     j = tria.t.reshape(-1)
     datx = (
-        np.column_stack((e0[:, 1], e1[:, 1], e2[:, 1])) / areas2[:, np.newaxis]
+        cupy.column_stack((e0[:, 1], e1[:, 1], e2[:, 1])) / areas2[:, cupy.newaxis]
     ).reshape(-1)
     daty = -(
-        np.column_stack((e0[:, 0], e1[:, 0], e2[:, 0])) / areas2[:, np.newaxis]
+        cupy.column_stack((e0[:, 0], e1[:, 0], e2[:, 0])) / areas2[:, cupy.newaxis]
     ).reshape(-1)
     nv = tria.v.shape[0]
     Dx = sparse.csr_matrix((datx, (i, j)), shape=(nf, nv))
@@ -340,7 +340,7 @@ def beltrami_coefficient(tria, mapping):
     E = dXdu**2 + dYdu**2 + dZdu**2
     G = dXdv**2 + dYdv**2 + dZdv**2
     F = dXdu * dXdv + dYdu * dYdv + dZdu * dZdv
-    mu = (E - G + 2j * F) / (E + G + 2.0 * np.sqrt(E * G - F**2))
+    mu = (E - G + 2j * F) / (E + G + 2.0 * cupy.sqrt(E * G - F**2))
 
     return mu
 
@@ -354,14 +354,14 @@ def linear_beltrami_solver(tria, mu, landmark, target):
     tria : TriaMesh
         (vertices, triangle) of genus-0 closed triangle mesh
         TriaMesh should be planar mapping on complex plane
-    mu : np.array of complex beltrami coefficients
-    landmark : np.ndarray of fixed vertex indices
-    target : np.ndarray of shape (n,3)
+    mu : cupy.array of complex beltrami coefficients
+    landmark : cupy.ndarray of fixed vertex indices
+    target : cupy.ndarray of shape (n,3)
         2D landmark target coordinates (third coordinate is zero)
 
     Returns
     -------
-    mapping : np.ndarray of shape (n,3)
+    mapping : cupy.ndarray of shape (n,3)
         vertex coordinates of new mapping
 
     Notes
@@ -381,13 +381,13 @@ def linear_beltrami_solver(tria, mu, landmark, target):
     """
 
     # here we should be in the plane
-    if np.amax(tria.v[:, 2]) - np.amin(tria.v[:, 2]) > 0.001:
+    if cupy.amax(tria.v[:, 2]) - cupy.amin(tria.v[:, 2]) > 0.001:
         print("ERROR: mesh should be on complex plane ..")
         raise ValueError("not planar")
 
-    af = (1.0 - 2 * np.real(mu) + np.abs(mu) ** 2) / (1.0 - np.abs(mu) ** 2)
-    bf = -2.0 * np.imag(mu) / (1.0 - np.abs(mu) ** 2)
-    gf = (1.0 + 2 * np.real(mu) + np.abs(mu) ** 2) / (1.0 - np.abs(mu) ** 2)
+    af = (1.0 - 2 * cupy.real(mu) + cupy.abs(mu) ** 2) / (1.0 - cupy.abs(mu) ** 2)
+    bf = -2.0 * cupy.imag(mu) / (1.0 - cupy.abs(mu) ** 2)
+    gf = (1.0 + 2 * cupy.real(mu) + cupy.abs(mu) ** 2) / (1.0 - cupy.abs(mu) ** 2)
 
     # get 2D vertices (drop 3rd dim)
     t0 = tria.t[:, 0]
@@ -404,11 +404,11 @@ def linear_beltrami_solver(tria, mu, landmark, target):
     uxv2 = v0[:, 1] - v1[:, 1]
     uyv2 = v1[:, 0] - v0[:, 0]
 
-    c0 = np.sqrt(uxv0**2 + uyv0**2)
-    c1 = np.sqrt(uxv1**2 + uyv1**2)
-    c2 = np.sqrt(uxv2**2 + uyv2**2)
+    c0 = cupy.sqrt(uxv0**2 + uyv0**2)
+    c1 = cupy.sqrt(uxv1**2 + uyv1**2)
+    c2 = cupy.sqrt(uxv2**2 + uyv2**2)
     s = 0.5 * (c0 + c1 + c2)
-    area2 = 2 * np.sqrt(s * (s - c0) * (s - c1) * (s - c2))
+    area2 = 2 * cupy.sqrt(s * (s - c0) * (s - c1) * (s - c2))
 
     v00 = (af * uxv0 * uxv0 + 2 * bf * uxv0 * uyv0 + gf * uyv0 * uyv0) / area2
     v11 = (af * uxv1 * uxv1 + 2 * bf * uxv1 * uyv1 + gf * uyv1 * uyv1) / area2
@@ -424,9 +424,9 @@ def linear_beltrami_solver(tria, mu, landmark, target):
     ) / area2
 
     # create symmetric A
-    i = np.column_stack((t0, t1, t2, t0, t1, t1, t2, t2, t0)).reshape(-1)
-    j = np.column_stack((t0, t1, t2, t1, t0, t2, t1, t0, t2)).reshape(-1)
-    dat = np.column_stack((v00, v11, v22, v01, v01, v12, v12, v20, v20)).reshape(-1)
+    i = cupy.column_stack((t0, t1, t2, t0, t1, t1, t2, t2, t0)).reshape(-1)
+    j = cupy.column_stack((t0, t1, t2, t1, t0, t2, t1, t0, t2)).reshape(-1)
+    dat = cupy.column_stack((v00, v11, v22, v01, v01, v12, v12, v20, v20)).reshape(-1)
     nv = tria.v.shape[0]
     A = sparse.csc_matrix((dat, (i, j)), shape=(nv, nv), dtype=complex)
 
@@ -442,15 +442,15 @@ def linear_beltrami_solver(tria, mu, landmark, target):
     mrow, mcol, mval = sparse.find(A[:, landmark])
     Azero = sparse.csc_matrix((mval, (mrow, landmark[mcol])), shape=(nv, nv))
     Aones = sparse.csr_matrix(
-        (np.ones(landmark.shape[0]), (landmark, landmark)), shape=(nv, nv)
+        (cupy.ones(landmark.shape[0]), (landmark, landmark)), shape=(nv, nv)
     )
     A = A - Azero + Aones
     A.eliminate_zeros()
 
     x = sparse_symmetric_solve(A, b)
 
-    mapping = np.squeeze(np.array(x))
-    mapping = np.column_stack((np.real(mapping), np.imag(mapping)))
+    mapping = cupy.squeeze(cupy.array(x))
+    mapping = cupy.column_stack((cupy.real(mapping), cupy.imag(mapping)))
     return mapping
 
 
@@ -461,7 +461,7 @@ def sparse_symmetric_solve(A, b, use_cholmod=True):
     Parameters
     ----------
     A : sparse matrix of shape (n, n)
-    b : np.ndarray vector of length n
+    b : cupy.ndarray vector of length n
     use_cholmod : bool, default=True
         Which solver to use:
             * True : Use Cholesky decomposition from scikit-sparse cholmod
@@ -469,7 +469,7 @@ def sparse_symmetric_solve(A, b, use_cholmod=True):
 
     Returns
     -------
-    x: np.ndarray of length n, solution to  ``A x = b``
+    x: cupy.ndarray of length n, solution to  ``A x = b``
     """
 
     sksparse = import_optional_dependency("sksparse", raise_error=use_cholmod)
@@ -478,7 +478,7 @@ def sparse_symmetric_solve(A, b, use_cholmod=True):
         chol = sksparse.cholmod.cholesky(A)
         x = chol(b)
     else:
-        from scipy.sparse.linalg import splu
+        from cupyx.scipy.sparse.linalg import splu
 
         print("Solver: spsolve (LU decomposition) ...")
         lu = splu(A)
@@ -492,12 +492,12 @@ def stereographic(u):
 
     Parameters
     ----------
-    u : np.ndarray of shape (n,3)
+    u : cupy.ndarray of shape (n,3)
         u represents the three vertex coordinates
 
     Returns
     -------
-    v: np.ndarray of n complex numbers
+    v: cupy.ndarray of n complex numbers
        stereographic map of u in complex plane
 
     Notes
@@ -519,7 +519,7 @@ def stereographic(u):
     x = u[:, 0]
     y = u[:, 1]
     z = u[:, 2]
-    v = np.empty(u.shape[:-1], dtype=complex)
+    v = cupy.empty(u.shape[:-1], dtype=complex)
     v.real = (x / (1 - z)).flatten()
     v.imag = (y / (1 - z)).flatten()
     return v
@@ -531,13 +531,13 @@ def inverse_stereographic(u):
 
     Parameters
     ----------
-    u : np.ndarray
+    u : cupy.ndarray
         can be complex array, or two columns (real,img)
         for coordinates on complex plane
 
     Returns
     -------
-    v: np.ndarray of shape (n,3)
+    v: cupy.ndarray of shape (n,3)
         coordinates on sphere in 3D
 
     Notes
@@ -556,12 +556,12 @@ def inverse_stereographic(u):
     and has been distributed with the Apache 2 License
     """
 
-    if np.iscomplexobj(u):
+    if cupy.iscomplexobj(u):
         x = u.real
         y = u.imag
     else:
         x = u[:, 0]
         y = u[:, 1]
     z = 1 + x**2 + y**2
-    v = np.column_stack((2 * x / z, 2 * y / z, (-1 + x**2 + y**2) / z))
+    v = cupy.column_stack((2 * x / z, 2 * y / z, (-1 + x**2 + y**2) / z))
     return v

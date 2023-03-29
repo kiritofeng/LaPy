@@ -40,11 +40,11 @@ classifiers = [
     'Intended Audience :: Science/Research',
 ]
 dependencies = [
+    'cupy',
     'nibabel',
-    'numpy>=1.21',
+    'numpy',
     'plotly',
     'psutil',
-    'scipy',
 ]
 
 [project.optional-dependencies]

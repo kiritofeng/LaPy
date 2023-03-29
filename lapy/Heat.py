@@ -1,4 +1,4 @@
-import numpy as np
+import cupy
 
 from .utils._imports import import_optional_dependency
 
@@ -11,13 +11,13 @@ def diagonal(t, x, evecs, evals, n):
 
     Parameters
     ----------
-    t : float or np.ndarray
+    t : float or cupy.ndarray
         time or a row vector of time values
-    x : np.ndarray
+    x : cupy.ndarray
         vertex ids for the positions of K(t,x,x)
-    evecs : np.ndarray
+    evecs : cupy.ndarray
         eigenvectors (matrix: vnum x evecsnum)
-    evals : np.ndarray
+    evals : cupy.ndarray
         vector of eigenvalues (col vector: evecsnum x 1)
     n : int
         number of evecs and vals to use (smaller or equal length)
@@ -29,7 +29,7 @@ def diagonal(t, x, evecs, evals, n):
     """
 
     # maybe add code to check dimensions of input and flip axis if necessary
-    h = np.matmul(evecs[x, 0:n] * evecs[x, 0:n], np.exp(-np.matmul(evals[0:n], t)))
+    h = cupy.matmul(evecs[x, 0:n] * evecs[x, 0:n], cupy.exp(-cupy.matmul(evals[0:n], t)))
     return h
 
 
@@ -43,25 +43,25 @@ def kernel(t, vfix, evecs, evals, n):
 
     Parameters
     ----------
-    t : number or np.ndarray
+    t : number or cupy.ndarray
         time (can also be a row vector, if passing multiple times)
-    vfix : np.ndarray
+    vfix : cupy.ndarray
         fixed vertex index
-    evecs : np.ndarray
+    evecs : cupy.ndarray
         matrix of eigenvectors (M x N), M = #vertices, N=#eigenvectors
-    evals : np.ndarray
+    evals : cupy.ndarray
         col vector of eigenvalues (N)
     n : int
         number of eigenvalues/vectors used in heat kernel (n<=N)
 
     Returns
     -------
-    h : np.ndarray
+    h : cupy.ndarray
         matrix m rows: all vertices, cols: times in t
     """
 
     # h = evecs * ( exp(-evals * t) .* repmat(evecs(vfix,:)',1,length(t))  )
-    h = np.matmul(evecs[:, 0:n], (np.exp(np.matmul(-evals[0:n], t)) * evecs[vfix, 0:n]))
+    h = cupy.matmul(evecs[:, 0:n], (cupy.exp(cupy.matmul(-evals[0:n], t)) * evecs[vfix, 0:n]))
     return h
 
 
@@ -103,8 +103,8 @@ def diffusion(geometry, vids, m=1.0, aniso=None, use_cholmod=True):
     # backward Euler matrix:
     hmat = fem.mass + t * fem.stiffness
     # set initial heat
-    b0 = np.zeros((nv,))
-    b0[np.array(vids)] = 1.0
+    b0 = cupy.zeros((nv,))
+    b0[cupy.array(vids)] = 1.0
     # solve H x = b0
     print("Matrix Format now:  " + hmat.getformat())
     if sksparse is not None:
@@ -112,9 +112,9 @@ def diffusion(geometry, vids, m=1.0, aniso=None, use_cholmod=True):
         chol = sksparse.choldmod.cholesky(hmat)
         vfunc = chol(b0)
     else:
-        from scipy.sparse.linalg import splu
+        from cupyx.scipy.sparse.linalg import splu
 
         print("Solver: spsolve (LU decomposition) ...")
         lu = splu(hmat)
-        vfunc = lu.solve(np.float32(b0))
+        vfunc = lu.solve(cupy.float32(b0))
     return vfunc

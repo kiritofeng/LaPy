@@ -1,5 +1,5 @@
-import numpy as np
-from scipy import sparse
+import cupy
+from cupyx.scipy import sparse
 
 from .Solver import Solver
 from .TriaMesh import TriaMesh
@@ -113,8 +113,8 @@ def compute_geodesic_f(geom, vfunc):
 
     gradf = compute_gradient(geom, vfunc)
     # normalize gradient
-    gradnorm = gradf / np.sqrt((gradf**2).sum(1))[:, np.newaxis]
-    gradnorm = np.nan_to_num(gradnorm)
+    gradnorm = gradf / cupy.sqrt((gradf**2).sum(1))[:, cupy.newaxis]
+    gradnorm = cupy.nan_to_num(gradnorm)
     divf = compute_divergence(geom, gradnorm)
     fem = Solver(geom, lump=True)
     # as long as div does not care about weighing with a Bi,
@@ -149,8 +149,8 @@ def tria_compute_geodesic_f(tria, vfunc):
     """
     gradf = tria_compute_gradient(tria, vfunc)
     # normalize gradient
-    gradnorm = gradf / np.sqrt((gradf**2).sum(1))[:, np.newaxis]
-    gradnorm = np.nan_to_num(gradnorm)
+    gradnorm = gradf / cupy.sqrt((gradf**2).sum(1))[:, cupy.newaxis]
+    gradnorm = cupy.nan_to_num(gradnorm)
     divf = tria_compute_divergence(tria, gradnorm)
     fem = Solver(tria)
     # as long as div does not care about weighing with a Bi,
@@ -205,17 +205,17 @@ def tria_compute_gradient(tria, vfunc):
     e0 = v2 - v1
     e1 = v0 - v2
     # get tria normals in n and 1.0/(2*areas) in lni
-    n = np.cross(e2, -e1)
-    ln = np.sqrt(np.sum(n * n, axis=1))
+    n = cupy.cross(e2, -e1)
+    ln = cupy.sqrt(cupy.sum(n * n, axis=1))
     ln[ln < sys.float_info.epsilon] = 1  # avoid division by zero
-    lni = np.divide(1.0, ln)[:, np.newaxis]
+    lni = cupy.divide(1.0, ln)[:, cupy.newaxis]
     n *= lni
     # sum three weighted edges
-    c0 = vfunc[tria.t[:, 0], np.newaxis] * e0
-    c1 = vfunc[tria.t[:, 1], np.newaxis] * e1
-    c2 = vfunc[tria.t[:, 2], np.newaxis] * e2
+    c0 = vfunc[tria.t[:, 0], cupy.newaxis] * e0
+    c1 = vfunc[tria.t[:, 1], cupy.newaxis] * e1
+    c2 = vfunc[tria.t[:, 2], cupy.newaxis] * e2
     # divided by 2 * area and rotate edge sum
-    tfunc = lni * np.cross(n, (c0 + c1 + c2))
+    tfunc = lni * cupy.cross(n, (c0 + c1 + c2))
     return tfunc
 
 
@@ -256,8 +256,8 @@ def tria_compute_divergence(tria, tfunc):
     e0 = v2 - v1
     e1 = v0 - v2
     # cross length
-    n = np.cross(e2, -e1)
-    ln = np.sqrt(np.sum(n * n, axis=1))
+    n = cupy.cross(e2, -e1)
+    ln = cupy.sqrt(cupy.sum(n * n, axis=1))
     ln[ln < sys.float_info.epsilon] = 1  # avoid division by zero
     # cot = scalar products / cross norm
     # number according to opposite edge num
@@ -265,20 +265,20 @@ def tria_compute_divergence(tria, tfunc):
     cot1 = (e0 * (-e2)).sum(1) / ln
     cot2 = (e1 * (-e0)).sum(1) / ln
     # dot products of cot with edges
-    c0 = cot0[:, np.newaxis] * e0
-    c1 = cot1[:, np.newaxis] * e1
-    c2 = cot2[:, np.newaxis] * e2
+    c0 = cot0[:, cupy.newaxis] * e0
+    c1 = cot1[:, cupy.newaxis] * e1
+    c2 = cot2[:, cupy.newaxis] * e2
     # compute vfunc divergence
     x0 = ((c2 - c1) * tfunc).sum(1)
     x1 = ((c0 - c2) * tfunc).sum(1)
     x2 = ((c1 - c0) * tfunc).sum(1)
     # use sparse matrix to add multiple entries of each tria at each of its vertices
-    i = np.column_stack((tria.t[:, 0], tria.t[:, 1], tria.t[:, 2])).reshape(-1)
-    j = np.zeros((3 * len(tria.t), 1), dtype=int).reshape(-1)
-    dat = np.column_stack((x0, x1, x2)).reshape(-1)
+    i = cupy.column_stack((tria.t[:, 0], tria.t[:, 1], tria.t[:, 2])).reshape(-1)
+    j = cupy.zeros((3 * len(tria.t), 1), dtype=int).reshape(-1)
+    dat = cupy.column_stack((x0, x1, x2)).reshape(-1)
     # convert back to nparray 1D
-    vfunc = np.squeeze(
-        np.asarray(0.5 * sparse.csc_matrix((dat, (i, j))).todense(), dtype=tfunc.dtype)
+    vfunc = cupy.squeeze(
+        cupy.asarray(0.5 * sparse.csc_matrix((dat, (i, j))).todense(), dtype=tfunc.dtype)
     )
     return vfunc
 
@@ -322,21 +322,21 @@ def tria_compute_divergence2(tria, tfunc):
     e0 = v2 - v1
     e1 = v0 - v2
     # cross length
-    n = np.cross(e2, -e1)
-    ln = np.sqrt(np.sum(n * n, axis=1))
+    n = cupy.cross(e2, -e1)
+    ln = cupy.sqrt(cupy.sum(n * n, axis=1))
     ln[ln < sys.float_info.epsilon] = 1  # avoid division by zero
-    lni = np.divide(1.0, ln)[:, np.newaxis]
+    lni = cupy.divide(1.0, ln)[:, cupy.newaxis]
     n *= lni
-    c0 = np.cross(e0, n)
-    c1 = np.cross(e1, n)
-    c2 = np.cross(e2, n)
+    c0 = cupy.cross(e0, n)
+    c1 = cupy.cross(e1, n)
+    c2 = cupy.cross(e2, n)
     x0 = (c0 * tfunc).sum(1)
     x1 = (c1 * tfunc).sum(1)
     x2 = (c2 * tfunc).sum(1)
-    i = np.column_stack((tria.t[:, 0], tria.t[:, 1], tria.t[:, 2])).reshape(-1)
-    j = np.zeros((3 * len(tria.t), 1), dtype=int).reshape(-1)
-    dat = np.column_stack((x0, x1, x2)).reshape(-1)
-    vfunc = np.squeeze(np.asarray(0.5 * sparse.csc_matrix((dat, (i, j))).todense()))
+    i = cupy.column_stack((tria.t[:, 0], tria.t[:, 1], tria.t[:, 2])).reshape(-1)
+    j = cupy.zeros((3 * len(tria.t), 1), dtype=int).reshape(-1)
+    dat = cupy.column_stack((x0, x1, x2)).reshape(-1)
+    vfunc = cupy.squeeze(cupy.asarray(0.5 * sparse.csc_matrix((dat, (i, j))).todense()))
     return vfunc
 
 
@@ -368,10 +368,10 @@ def tria_compute_rotated_f(tria, vfunc):
 
     gradf = tria_compute_gradient(tria, vfunc)
     tn = tria.tria_normals()
-    # lg = np.sqrt(np.sum(gradf * gradf, axis=1))
-    # lgi = np.divide(1.0,lg)[:,np.newaxis]
+    # lg = cupy.sqrt(cupy.sum(gradf * gradf, axis=1))
+    # lgi = cupy.divide(1.0,lg)[:,cupy.newaxis]
     # gradf *= lgi
-    gradf = np.cross(tn, gradf)
+    gradf = cupy.cross(tn, gradf)
     divf = tria_compute_divergence(tria, gradf)
     fem = Solver(tria)
     # as long as div does not care about weighing with a Bi,
@@ -442,7 +442,7 @@ def tria_mean_curvature_flow(
         else:
             # Note, it would be better to do sparse Cholesky (CHOLMOD)
             # as it can be 5-6 times faster
-            from scipy.sparse.linalg import spsolve
+            from cupyx.scipy.sparse.linalg import spsolve
 
             print("Solver: spsolve (LU decomposition) ...")
             trianorm.v = spsolve(mass + step * a_mat, mass_v)
@@ -450,7 +450,7 @@ def tria_mean_curvature_flow(
         trianorm.normalize_()
         # compute difference
         dv = trianorm.v - vlast
-        diff = np.trace(np.square(np.matmul(np.transpose(dv), mass.dot(dv))))
+        diff = cupy.trace(cupy.square(cupy.matmul(cupy.transpose(dv), mass.dot(dv))))
         print("Step {} delta: {}".format(x + 1, diff))
         if diff < stop_eps:
             print("Converged after {} iterations.".format(x + 1))
@@ -500,10 +500,10 @@ def tria_spherical_project(tria, flow_iter=3, debug=False):
         vx3 = triax.v[triax.t[:, 2], :]
         v2mv1 = vx2 - vx1
         v3mv1 = vx3 - vx1
-        cr = np.cross(v2mv1, v3mv1)
-        spatvolx = np.sum(vx1 * cr, axis=1)
-        areasx = 0.5 * np.sqrt(np.sum(cr * cr, axis=1))
-        areax = np.sum(areasx[np.where(spatvolx < 0)])
+        cr = cupy.cross(v2mv1, v3mv1)
+        spatvolx = cupy.sum(vx1 * cr, axis=1)
+        areasx = 0.5 * cupy.sqrt(cupy.sum(cr * cr, axis=1))
+        areax = cupy.sum(areasx[cupy.where(spatvolx < 0)])
         return areax
 
     fem = Solver(tria, lump=False)
@@ -526,18 +526,18 @@ def tria_spherical_project(tria, flow_iter=3, debug=False):
 
     # flip efuncs to align to coordinates consistently
     ev1 = evecs[:, 1]
-    # ev1maxi = np.argmax(ev1)
-    # ev1mini = np.argmin(ev1)
+    # ev1maxi = cupy.argmax(ev1)
+    # ev1mini = cupy.argmin(ev1)
     # cmax = v[ev1maxi,:]
     # cmin = v[ev1mini,:]
-    cmax1 = np.mean(tria.v[ev1 > 0.5 * np.max(ev1), :], 0)
-    cmin1 = np.mean(tria.v[ev1 < 0.5 * np.min(ev1), :], 0)
+    cmax1 = cupy.mean(tria.v[ev1 > 0.5 * cupy.max(ev1), :], 0)
+    cmin1 = cupy.mean(tria.v[ev1 < 0.5 * cupy.min(ev1), :], 0)
     ev2 = evecs[:, 2]
-    cmax2 = np.mean(tria.v[ev2 > 0.5 * np.max(ev2), :], 0)
-    cmin2 = np.mean(tria.v[ev2 < 0.5 * np.min(ev2), :], 0)
+    cmax2 = cupy.mean(tria.v[ev2 > 0.5 * cupy.max(ev2), :], 0)
+    cmin2 = cupy.mean(tria.v[ev2 < 0.5 * cupy.min(ev2), :], 0)
     ev3 = evecs[:, 3]
-    cmax3 = np.mean(tria.v[ev3 > 0.5 * np.max(ev3), :], 0)
-    cmin3 = np.mean(tria.v[ev3 < 0.5 * np.min(ev3), :], 0)
+    cmax3 = cupy.mean(tria.v[ev3 > 0.5 * cupy.max(ev3), :], 0)
+    cmin3 = cupy.mean(tria.v[ev3 < 0.5 * cupy.min(ev3), :], 0)
 
     # we trust ev 1 goes from front to back
     l11 = abs(cmax1[1] - cmin1[1])
@@ -588,10 +588,10 @@ def tria_spherical_project(tria, flow_iter=3, debug=False):
         print("inverting direction 3 (right - left)")
     l3 = abs(cmax3[0] - cmin3[0])
 
-    v1 = v1 * (1.0 / np.sqrt(np.sum(v1 * v1)))
-    v2 = v2 * (1.0 / np.sqrt(np.sum(v2 * v2)))
-    v3 = v3 * (1.0 / np.sqrt(np.sum(v3 * v3)))
-    spatvol = abs(np.dot(v1, np.cross(v2, v3)))
+    v1 = v1 * (1.0 / cupy.sqrt(cupy.sum(v1 * v1)))
+    v2 = v2 * (1.0 / cupy.sqrt(cupy.sum(v2 * v2)))
+    v3 = v3 * (1.0 / cupy.sqrt(cupy.sum(v3 * v3)))
+    spatvol = abs(cupy.dot(v1, cupy.cross(v2, v3)))
     print("spat vol: {}".format(spatvol))
 
     mvol = tria.volume()
@@ -603,23 +603,23 @@ def tria_spherical_project(tria, flow_iter=3, debug=False):
     # we map evN to -1..0..+1 (keep zero level fixed)
     # I have the feeling that this helps a little with the stretching
     # at the poles, but who knows...
-    ev1min = np.amin(ev1)
-    ev1max = np.amax(ev1)
+    ev1min = cupy.amin(ev1)
+    ev1max = cupy.amax(ev1)
     ev1[ev1 < 0] /= -ev1min
     ev1[ev1 > 0] /= ev1max
 
-    ev2min = np.amin(ev2)
-    ev2max = np.amax(ev2)
+    ev2min = cupy.amin(ev2)
+    ev2max = cupy.amax(ev2)
     ev2[ev2 < 0] /= -ev2min
     ev2[ev2 > 0] /= ev2max
 
-    ev3min = np.amin(ev3)
-    ev3max = np.amax(ev3)
+    ev3min = cupy.amin(ev3)
+    ev3max = cupy.amax(ev3)
     ev3[ev3 < 0] /= -ev3min
     ev3[ev3 > 0] /= ev3max
 
     # set evec as new coordinates (spectral embedding)
-    vn = np.empty(tria.v.shape)
+    vn = cupy.empty(tria.v.shape)
     vn[:, 0] = ev3
     vn[:, 1] = ev1
     vn[:, 2] = ev2
@@ -631,8 +631,8 @@ def tria_spherical_project(tria, flow_iter=3, debug=False):
         vn = tflow.v
 
     # project to sphere and scaled to have the same scale/origin as FS:
-    dist = np.sqrt(np.sum(vn * vn, axis=1))
-    vn = 100 * (vn / dist[:, np.newaxis])
+    dist = cupy.sqrt(cupy.sum(vn * vn, axis=1))
+    vn = 100 * (vn / dist[:, cupy.newaxis])
 
     trianew = TriaMesh(vn, tria.t)
     svol = trianew.area() / (4.0 * math.pi * 10000)
@@ -714,19 +714,19 @@ def tet_compute_gradient(tet, vfunc):
     e4 = v3 - v1
     e5 = v3 - v2
     # Compute cross product and  1 / (2 * vol) for each triangle:
-    cr = np.cross(e0, e2)
-    vol = np.abs(np.sum(e3 * cr, axis=1))
+    cr = cupy.cross(e0, e2)
+    vol = cupy.abs(cupy.sum(e3 * cr, axis=1))
     vol[vol < sys.float_info.epsilon] = 1  # avoid division by zero
-    voli = np.divide(1.0, vol)[:, np.newaxis]
+    voli = cupy.divide(1.0, vol)[:, cupy.newaxis]
     # sum weighted edges
-    # c0 = vfunc[t[:,0],np.newaxis] * np.cross(,)
-    c1 = (vfunc[tet.t[:, 1], np.newaxis] - vfunc[tet.t[:, 0], np.newaxis]) * np.cross(
+    # c0 = vfunc[t[:,0],cupy.newaxis] * cupy.cross(,)
+    c1 = (vfunc[tet.t[:, 1], cupy.newaxis] - vfunc[tet.t[:, 0], cupy.newaxis]) * cupy.cross(
         e2, e5
     )
-    c2 = (vfunc[tet.t[:, 2], np.newaxis] - vfunc[tet.t[:, 0], np.newaxis]) * np.cross(
+    c2 = (vfunc[tet.t[:, 2], cupy.newaxis] - vfunc[tet.t[:, 0], cupy.newaxis]) * cupy.cross(
         e3, e4
     )
-    c3 = (vfunc[tet.t[:, 3], np.newaxis] - vfunc[tet.t[:, 0], np.newaxis]) * np.cross(
+    c3 = (vfunc[tet.t[:, 3], cupy.newaxis] - vfunc[tet.t[:, 0], cupy.newaxis]) * cupy.cross(
         -e2, e0
     )
     # divided by parallelepiped vol
@@ -770,22 +770,22 @@ def tet_compute_divergence(tet, tfunc):
     e3 = v3 - v0
     e4 = v3 - v1
     # 2-times-area-length-normals opposite vertex i
-    n0 = np.cross(e1, e4)
-    n1 = np.cross(e3, e2)
-    n2 = np.cross(e0, e3)
-    n3 = np.cross(e2, e0)
+    n0 = cupy.cross(e1, e4)
+    n1 = cupy.cross(e3, e2)
+    n2 = cupy.cross(e0, e3)
+    n3 = cupy.cross(e2, e0)
     # sum contributions to vertices
     x0 = (n0 * tfunc).sum(1)
     x1 = (n1 * tfunc).sum(1)
     x2 = (n2 * tfunc).sum(1)
     x3 = (n3 * tfunc).sum(1)
-    i = np.column_stack((tet.t[:, 0], tet.t[:, 1], tet.t[:, 2], tet.t[:, 3])).reshape(
+    i = cupy.column_stack((tet.t[:, 0], tet.t[:, 1], tet.t[:, 2], tet.t[:, 3])).reshape(
         -1
     )
-    j = np.zeros((4 * len(tet.t), 1), dtype=int).reshape(-1)
-    dat = np.column_stack((x0, x1, x2, x3)).reshape(-1)
-    vfunc = -np.squeeze(
-        np.asarray(
+    j = cupy.zeros((4 * len(tet.t), 1), dtype=int).reshape(-1)
+    dat = cupy.column_stack((x0, x1, x2, x3)).reshape(-1)
+    vfunc = -cupy.squeeze(
+        cupy.asarray(
             (1.0 / 6.0) * sparse.csc_matrix((dat, (i, j))).todense(),
             dtype=tfunc.dtype,
         )
