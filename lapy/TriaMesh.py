@@ -129,8 +129,8 @@ class TriaMesh:
         if self.t.shape[0] < self.t.shape[1]:
             self.t = self.t.T
         # Check a few things
-        vnum = cupy.max(self.v.shape)
-        if cupy.max(self.t) >= vnum:
+        vnum = max(self.v.shape)
+        if max(self.t) >= vnum:
             raise ValueError("Max index exceeds number of vertices")
         if self.t.shape[1] != 3:
             raise ValueError("Triangles should have 3 vertices")
@@ -281,7 +281,7 @@ class TriaMesh:
 
         # v can contain unused vertices so we get vnum from trias
         vnum = len(cupy.unique(self.t.reshape(-1)))
-        tnum = cupy.max(self.t.shape)
+        tnum = max(self.t.shape)
         enum = int(self.adj_sym.nnz / 2)
         return vnum - enum + tnum
 
@@ -497,7 +497,7 @@ class TriaMesh:
             whether vertex list has more vertices or not
         """
 
-        vnum = cupy.max(self.v.shape)
+        vnum = max(self.v.shape)
         vnumt = len(cupy.unique(self.t.reshape(-1)))
         return vnum != vnumt
 
@@ -901,7 +901,7 @@ class TriaMesh:
         """
 
         tflat = self.t.reshape(-1)
-        vnum = cupy.max(self.v.shape)
+        vnum = max(self.v.shape)
         if cupy.max(tflat) >= vnum:
             raise ValueError("Max index exceeds number of vertices")
         # determine which vertices to keep

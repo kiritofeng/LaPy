@@ -66,7 +66,7 @@ class TetMesh:
 
         self.v = cupy.array(v)
         self.t = cupy.array(t)
-        vnum = cupy.max(self.v.shape)
+        vnum = max(self.v.shape)
         if cupy.max(self.t) >= vnum:
             raise ValueError("Max index exceeds number of vertices")
         # put more checks here (e.g. the dim 3 conditions on columns)
@@ -111,7 +111,7 @@ class TetMesh:
             whether vertex list has more vertices than tetra or not
         """
 
-        vnum = cupy.max(self.v.shape)
+        vnum = max(self.v.shape)
         vnumt = len(cupy.unique(self.t.reshape(-1)))
         return vnum != vnumt
 
@@ -246,7 +246,7 @@ class TetMesh:
         """
 
         tflat = self.t.reshape(-1)
-        vnum = cupy.max(self.v.shape)
+        vnum = max(self.v.shape)
         if cupy.max(tflat) >= vnum:
             raise ValueError("Max index exceeds number of vertices")
         # determine which vertices to keep
